@@ -35,16 +35,20 @@ from config.settings import settings
 # ── Lazy singletons ──────────────────────────────────────────────────────────
 
 _embedding_model = None
+_embedding_unavailable = False
 
 
 def _get_embedding_model():
-    global _embedding_model
+    global _embedding_model, _embedding_unavailable
+    if not settings.enable_local_transformers or _embedding_unavailable:
+        return None  # fast Jaccard fallback – avoids slow first-request model loads
     if _embedding_model is None:
         try:
             from sentence_transformers import SentenceTransformer
             _embedding_model = SentenceTransformer(settings.semantic_model)
             logger.info("SentenceTransformer '{}' loaded.", settings.semantic_model)
         except Exception as exc:
+            _embedding_unavailable = True
             logger.warning("Could not load SentenceTransformer: {}. Using fallback.", exc)
     return _embedding_model
 

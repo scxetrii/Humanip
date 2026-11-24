@@ -21,14 +21,43 @@ from backend.core.schemas import (
     TextAnalysis,
 )
 from backend.db import database as db
+from backend.providers.base import LLMError, ProviderRegistry
 from loguru import logger
 
 router = APIRouter()
 
 _analyzer = TextAnalyzer()
 
+_PROVIDER_KEY_VARS = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "cohere": "COHERE_API_KEY",
+}
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _ensure_provider_ready() -> None:
+    """Fail fast with an actionable error instead of a confusing 502."""
+    try:
+        provider = ProviderRegistry.active()
+    except LLMError as exc:
+        raise HTTPException(503, detail=str(exc))
+
+    if provider.is_configured:
+        return
+
+    key_var = _PROVIDER_KEY_VARS.get(provider.name)
+    hint = (
+        f" Set {key_var} in .env and restart the server."
+        if key_var
+        else f" Configure '{provider.name}' in .env and restart the server."
+    )
+    raise HTTPException(
+        400,
+        detail=f"Provider '{provider.name}' is not configured.{hint}",
+    )
+
 
 async def _persist(response: HumanizeResponse, session_id: str | None) -> None:
     """Background task: save a completed humanization to history."""
@@ -79,6 +108,7 @@ async def humanize_text(
     - Toggle citation and technical term preservation
     - Optionally specify American or British English
     """
+    _ensure_provider_ready()
     response = await engine.run(request)
     background_tasks.add_task(_persist, response, request.session_id)
     return response
@@ -94,6 +124,7 @@ async def humanize_batch(request: BatchHumanizeRequest) -> BatchHumanizeResponse
     if len(request.items) > 20:
         raise HTTPException(422, "Batch size cannot exceed 20 items.")
 
+    _ensure_provider_ready()
     results = await engine.run_batch(request.items)
     total_ms = sum(r.processing_time_ms for r in results)
     return BatchHumanizeResponse(results=results, total_processing_time_ms=total_ms)

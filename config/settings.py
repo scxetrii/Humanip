@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     llm_timeout: int = 60            # seconds per attempt
     llm_max_retries: int = 2         # attempts before giving up
     llm_total_timeout: int = 90      # hard cap for the whole LLM call
+    humanize_timeout: int = 110      # overall LLM budget for one humanization run
 
     # ── NLP ───────────────────────────────────────────────────────────────────
     spacy_model: str = "en_core_web_sm"   # or en_core_web_md / lg

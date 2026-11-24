@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from loguru import logger
 
-from backend.providers.base import BaseLLMProvider, ProviderRegistry
+from backend.providers.base import BaseLLMProvider, LLMConfigError, ProviderRegistry
 from config.settings import settings
 
 
@@ -42,10 +42,12 @@ class AnthropicProvider(BaseLLMProvider):
         try:
             import anthropic
         except ImportError as exc:
-            raise RuntimeError("anthropic package not installed – run: pip install anthropic") from exc
+            raise LLMConfigError(
+                "anthropic package not installed – run: pip install anthropic"
+            ) from exc
 
         if not self.is_configured:
-            raise RuntimeError("ANTHROPIC_API_KEY is not set in environment / .env")
+            raise LLMConfigError("ANTHROPIC_API_KEY is not set in environment / .env")
 
         client = anthropic.AsyncAnthropic(
             api_key=settings.anthropic_api_key,

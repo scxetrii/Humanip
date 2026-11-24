@@ -25,7 +25,12 @@ from loguru import logger
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 from backend.db.database import init_db, prune_old_history
-from backend.providers.base import LLMError, ProviderRegistry
+from backend.providers.base import (
+    LLMConfigError,
+    LLMError,
+    LLMTimeoutError,
+    ProviderRegistry,
+)
 from config.logging_config import configure_logging
 from config.settings import settings
 
@@ -56,6 +61,19 @@ async def lifespan(app: FastAPI):
         "Providers registered: {}", ProviderRegistry.all_names()
     )
     logger.info("Active provider: {}", settings.llm_provider)
+
+    try:
+        active_provider = ProviderRegistry.active()
+    except LLMError as exc:
+        logger.error("Active provider is unavailable: {}", exc)
+    else:
+        if not active_provider.is_configured:
+            logger.warning(
+                "Active provider '{}' is NOT configured. Humanization requests "
+                "will fail until its API key is set in .env and the server is restarted.",
+                active_provider.name,
+            )
+
     logger.info("API listening on http://{}:{}", settings.api_host, settings.api_port)
 
     yield  # ── App running ──────────────────────────────────────────────────
@@ -93,10 +111,17 @@ app.add_middleware(
 
 @app.exception_handler(LLMError)
 async def llm_error_handler(request: Request, exc: LLMError) -> JSONResponse:
-    logger.error("LLM error: {}", exc)
+    if isinstance(exc, LLMTimeoutError):
+        status_code, error_type = 504, "llm_timeout"
+    elif isinstance(exc, LLMConfigError):
+        status_code, error_type = 400, "provider_not_configured"
+    else:
+        status_code, error_type = 502, "llm_error"
+
+    logger.error("LLM error ({}): {}", error_type, exc)
     return JSONResponse(
-        status_code=502,
-        content={"detail": str(exc), "error_type": "llm_error"},
+        status_code=status_code,
+        content={"detail": str(exc), "error_type": error_type},
     )
 
 

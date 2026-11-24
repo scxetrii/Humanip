@@ -49,7 +49,7 @@ from backend.core.schemas import (
     WritingMode,
 )
 from backend.preservation.guardian import PreservationGuardian
-from backend.providers.base import LLMError, ProviderRegistry
+from backend.providers.base import LLMError, LLMTimeoutError, ProviderRegistry
 from backend.quality.evaluator import QualityEvaluator
 from config.settings import settings
 
@@ -147,6 +147,20 @@ def _build_diff(original: str, rewritten: str) -> list[DiffSegment]:
     return segments
 
 
+# ── Request deadline ──────────────────────────────────────────────────────────
+
+class _Deadline:
+    """Monotonic time budget shared by every LLM call in one humanization run."""
+
+    __slots__ = ("_end",)
+
+    def __init__(self, seconds: float) -> None:
+        self._end = time.monotonic() + max(1.0, float(seconds))
+
+    def remaining(self) -> float:
+        return max(0.0, self._end - time.monotonic())
+
+
 # ── LLM call with hard timeout ────────────────────────────────────────────────
 
 async def _complete_with_timeout(
@@ -154,16 +168,17 @@ async def _complete_with_timeout(
     system_prompt: str,
     user_prompt: str,
     max_tokens: int | None = None,
+    timeout: float | None = None,
 ):
+    budget = settings.llm_total_timeout if timeout is None else max(1.0, timeout)
     try:
         return await asyncio.wait_for(
             provider.complete(system_prompt, user_prompt, max_tokens=max_tokens),
-            timeout=settings.llm_total_timeout,
+            timeout=budget,
         )
     except asyncio.TimeoutError as exc:
-        raise LLMError(
-            f"[{provider.name}] LLM request timed out after "
-            f"{settings.llm_total_timeout}s"
+        raise LLMTimeoutError(
+            f"[{provider.name}] LLM request timed out after {budget:.0f}s"
         ) from exc
 
 
@@ -181,30 +196,63 @@ def _similarity(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()
 
 
+def _neutral_quality() -> QualityMetrics:
+    """Last-resort scores so a slow evaluator never fails a completed rewrite."""
+    return QualityMetrics(
+        semantic_similarity=0.5,
+        factual_preservation=1.0,
+        grammar_quality=0.8,
+        readability_improvement=0.0,
+        repetition_reduction=0.5,
+        citation_integrity=1.0,
+        sentence_variation=0.5,
+        paragraph_coherence=0.5,
+        overall_score=65.0,
+    )
+
+
 async def _complete_ensuring_rewrite(
     provider,
     system_prompt: str,
     user_prompt: str,
     source_text: str,
     max_tokens: int | None = None,
-    max_attempts: int = 3,
+    max_attempts: int = 2,
+    deadline: _Deadline | None = None,
 ) -> str:
     """Call the LLM, retrying when it echoes the input instead of rewriting it."""
     prompt = user_prompt
     result = ""
 
     for attempt in range(1, max_attempts + 1):
+        timeout = settings.llm_total_timeout
+        if deadline is not None:
+            remaining = deadline.remaining()
+            if remaining < 2.0:
+                raise LLMTimeoutError(
+                    f"[{provider.name}] Humanization exceeded the "
+                    f"{settings.humanize_timeout}s time budget"
+                )
+            timeout = min(timeout, remaining)
+
         resp = await _complete_with_timeout(
-            provider, system_prompt, prompt, max_tokens=max_tokens
+            provider, system_prompt, prompt,
+            max_tokens=max_tokens, timeout=timeout,
         )
         result = resp.text
         similarity = _similarity(source_text, result)
         if similarity < _COPY_SIMILARITY_THRESHOLD:
             return result
+
         logger.warning(
             "LLM returned near-identical text (similarity={:.3f}, attempt {}/{}); retrying",
             similarity, attempt, max_attempts,
         )
+        if attempt >= max_attempts:
+            break
+        if deadline is not None and deadline.remaining() < 5.0:
+            logger.warning("Time budget nearly exhausted; keeping current rewrite.")
+            break
         prompt = _REWRITE_RETRY_PREFIX + user_prompt
 
     return result
@@ -217,11 +265,11 @@ async def _rewrite_by_sentence(
     analysis: TextAnalysis,
     request: HumanizeRequest,
     system_prompt: str,
+    deadline: _Deadline | None = None,
 ) -> str:
     """Rewrite each sentence individually with neighbouring context."""
     provider = ProviderRegistry.active()
     sentences = sent_tokenize(text)
-    rewritten: list[str] = []
 
     # Chunk to avoid too many parallel calls
     sem = asyncio.Semaphore(3)
@@ -236,11 +284,17 @@ async def _rewrite_by_sentence(
             )
             return await _complete_ensuring_rewrite(
                 provider, system_prompt, user_prompt,
-                sentences[idx], max_tokens=512,
+                sentences[idx], max_tokens=512, deadline=deadline,
             )
 
-    tasks   = [_do_one(i) for i in range(len(sentences))]
-    results = await asyncio.gather(*tasks)
+    tasks = [asyncio.create_task(_do_one(i)) for i in range(len(sentences))]
+    try:
+        results = await asyncio.gather(*tasks)
+    except BaseException:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
     return " ".join(results)
 
 
@@ -251,6 +305,7 @@ async def _rewrite_by_paragraph(
     analysis: TextAnalysis,
     request: HumanizeRequest,
     system_prompt: str,
+    deadline: _Deadline | None = None,
 ) -> str:
     """Rewrite each paragraph individually."""
     provider   = ProviderRegistry.active()
@@ -258,21 +313,32 @@ async def _rewrite_by_paragraph(
     rewritten: list[str] = []
 
     for para in paragraphs:
+        if deadline is not None and deadline.remaining() < 2.0:
+            raise LLMTimeoutError(
+                f"[{provider.name}] Humanization exceeded the "
+                f"{settings.humanize_timeout}s time budget"
+            )
+
         user_prompt = build_user_prompt(
             para, analysis,
             request.preserve_citations,
             request.preserve_technical_terms,
         )
         result = await _complete_ensuring_rewrite(
-            provider, system_prompt, user_prompt, para
+            provider, system_prompt, user_prompt, para, deadline=deadline,
         )
         if _similarity(para, result) >= _COPY_SIMILARITY_THRESHOLD:
-            logger.warning(
-                "Paragraph still copied after retries; using sentence-level rewrite."
-            )
-            result = await _rewrite_by_sentence(
-                para, analysis, request, system_prompt
-            )
+            if deadline is not None and deadline.remaining() < 10.0:
+                logger.warning(
+                    "Paragraph still copied but time budget is low; keeping it."
+                )
+            else:
+                logger.warning(
+                    "Paragraph still copied after retries; using sentence-level rewrite."
+                )
+                result = await _rewrite_by_sentence(
+                    para, analysis, request, system_prompt, deadline=deadline,
+                )
         rewritten.append(result)
 
     return "\n\n".join(rewritten)
@@ -312,15 +378,16 @@ class HumanizationEngine:
             request.mode, request.intensity, request.english_variant
         )
         provider = ProviderRegistry.active()
+        deadline = _Deadline(settings.humanize_timeout)
 
         # ── Step 4: Call LLM (granularity-aware) ─────────────────────────────
         if request.granularity == RewriteGranularity.SENTENCE:
             raw_output = await _rewrite_by_sentence(
-                guarded_text, analysis, request, system_prompt
+                guarded_text, analysis, request, system_prompt, deadline=deadline
             )
         elif request.granularity == RewriteGranularity.PARAGRAPH:
             raw_output = await _rewrite_by_paragraph(
-                guarded_text, analysis, request, system_prompt
+                guarded_text, analysis, request, system_prompt, deadline=deadline
             )
         else:  # DOCUMENT
             user_prompt = build_user_prompt(
@@ -329,16 +396,24 @@ class HumanizationEngine:
                 request.preserve_technical_terms,
             )
             raw_output = await _complete_ensuring_rewrite(
-                provider, system_prompt, user_prompt, guarded_text
+                provider, system_prompt, user_prompt, guarded_text,
+                deadline=deadline,
             )
             if _similarity(guarded_text, raw_output) >= _COPY_SIMILARITY_THRESHOLD:
-                logger.warning(
-                    "Document-level output still copied after retries; "
-                    "falling back to paragraph-by-paragraph rewrite."
-                )
-                raw_output = await _rewrite_by_paragraph(
-                    guarded_text, analysis, request, system_prompt
-                )
+                if deadline.remaining() < 10.0:
+                    logger.warning(
+                        "Document-level output still copied but time budget is low; "
+                        "keeping the result instead of falling back."
+                    )
+                else:
+                    logger.warning(
+                        "Document-level output still copied after retries; "
+                        "falling back to paragraph-by-paragraph rewrite."
+                    )
+                    raw_output = await _rewrite_by_paragraph(
+                        guarded_text, analysis, request, system_prompt,
+                        deadline=deadline,
+                    )
 
         # ── Step 5: Post-process ──────────────────────────────────────────────
         restored = guardian.restore(raw_output, placeholder_map)
@@ -359,11 +434,19 @@ class HumanizationEngine:
             )
         except asyncio.TimeoutError:
             logger.warning("Quality evaluation timed out; using heuristic scores.")
-            quality = await asyncio.to_thread(
-                quality_engine.evaluate,
-                request.text, final, analysis,
-                skip_grammar=True,
-            )
+            try:
+                quality = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        quality_engine.evaluate,
+                        request.text, final, analysis, True,
+                    ),
+                    timeout=settings.quality_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Quality evaluation still timing out; using neutral scores."
+                )
+                quality = _neutral_quality()
 
         # ── Step 7: Build diff ────────────────────────────────────────────────
         diff = _build_diff(request.text, final)

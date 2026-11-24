@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from loguru import logger
 
-from backend.providers.base import BaseLLMProvider, ProviderRegistry
+from backend.providers.base import BaseLLMProvider, LLMConfigError, ProviderRegistry
 from config.settings import settings
 
 
@@ -44,10 +44,12 @@ class OpenAIProvider(BaseLLMProvider):
         try:
             from openai import AsyncOpenAI
         except ImportError as exc:
-            raise RuntimeError("openai package not installed – run: pip install openai") from exc
+            raise LLMConfigError(
+                "openai package not installed – run: pip install openai"
+            ) from exc
 
         if not self.is_configured:
-            raise RuntimeError("OPENAI_API_KEY is not set in environment / .env")
+            raise LLMConfigError("OPENAI_API_KEY is not set in environment / .env")
 
         client = AsyncOpenAI(
             api_key=settings.openai_api_key,

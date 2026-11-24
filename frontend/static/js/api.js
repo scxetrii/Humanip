@@ -39,11 +39,23 @@ async function apiFetch(path, options = {}) {
   }
 
   if (!resp.ok) {
-    let detail = `HTTP ${resp.status}`;
+    let detail = '';
+    const raw = await resp.text().catch(() => '');
     try {
-      const err = await resp.json();
-      detail = err.detail || err.message || detail;
+      const err = JSON.parse(raw);
+      detail = err.detail || err.message || '';
     } catch (_) {}
+
+    if (!detail) {
+      if (resp.status === 502 || resp.status === 504) {
+        detail = `The AI provider returned HTTP ${resp.status} (bad gateway or timeout). ` +
+                 `Check your provider API key, model name, and network connection, then try again.`;
+      } else if (resp.status === 503) {
+        detail = 'The server is temporarily unavailable. Please try again in a moment.';
+      } else {
+        detail = `HTTP ${resp.status}`;
+      }
+    }
     throw new Error(detail);
   }
 

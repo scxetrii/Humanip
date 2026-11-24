@@ -11,13 +11,14 @@ at runtime without changing any other code.
 from __future__ import annotations
 
 import abc
+import asyncio
 import time
 from typing import Any
 
 from loguru import logger
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
@@ -49,6 +50,45 @@ class LLMResponse:
 
 class LLMError(RuntimeError):
     """Raised when an LLM call fails after all retries."""
+
+
+class LLMConfigError(LLMError):
+    """Raised when a provider is missing its API key or SDK. Never retried."""
+
+
+class LLMTimeoutError(LLMError):
+    """Raised when an LLM call exceeds the configured time budget."""
+
+
+# ── Retry classification ──────────────────────────────────────────────────────
+
+def _status_code(exc: BaseException) -> int | None:
+    """Best-effort extraction of an HTTP status code from provider SDK errors."""
+    code = getattr(exc, "status_code", None)
+    if isinstance(code, int):
+        return code
+    response = getattr(exc, "response", None)
+    code = getattr(response, "status_code", None)
+    if isinstance(code, int):
+        return code
+    return None
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """
+    Retry only transient failures (timeouts, connection errors, 429 and 5xx).
+    Authentication, configuration, bad-request and not-found errors fail fast
+    instead of wasting a request's time budget on calls that cannot succeed.
+    """
+    if isinstance(exc, (LLMConfigError, asyncio.CancelledError)):
+        return False
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError, ConnectionError)):
+        return True
+
+    code = _status_code(exc)
+    if code is None:
+        return True  # unknown network/SDK failure – worth one retry
+    return code in (408, 409, 425, 429) or code >= 500
 
 
 # ── Abstract base ─────────────────────────────────────────────────────────────
@@ -119,8 +159,12 @@ class BaseLLMProvider(abc.ABC):
 
         try:
             text = await self._call_api_with_retry(system_prompt, user_prompt, temp, tokens)
+        except (LLMConfigError, LLMTimeoutError, asyncio.CancelledError):
+            raise
         except Exception as exc:
-            raise LLMError(f"[{self.name}] All retries failed: {exc}") from exc
+            raise LLMError(
+                f"[{self.name}] {type(exc).__name__}: {exc}"
+            ) from exc
 
         latency = int((time.perf_counter() - t0) * 1000)
         logger.info("[{}] Response in {}ms ({} chars)", self.name, latency, len(text))
@@ -133,9 +177,9 @@ class BaseLLMProvider(abc.ABC):
 
     @retry(
         reraise=True,
-        stop=stop_after_attempt(settings.llm_max_retries),
+        stop=stop_after_attempt(max(1, settings.llm_max_retries)),
         wait=wait_exponential(multiplier=1, min=2, max=20),
-        retry=retry_if_exception_type(Exception),
+        retry=retry_if_exception(_is_retryable),
     )
     async def _call_api_with_retry(
         self,

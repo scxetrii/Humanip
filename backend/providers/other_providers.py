@@ -13,7 +13,11 @@ import json
 import httpx
 from loguru import logger
 
-from backend.providers.base import BaseLLMProvider, ProviderRegistry
+from backend.providers.base import (
+    BaseLLMProvider,
+    LLMConfigError,
+    ProviderRegistry,
+)
 from config.settings import settings
 
 
@@ -49,10 +53,12 @@ class CohereProvider(BaseLLMProvider):
         try:
             import cohere
         except ImportError as exc:
-            raise RuntimeError("cohere package not installed – run: pip install cohere") from exc
+            raise LLMConfigError(
+                "cohere package not installed – run: pip install cohere"
+            ) from exc
 
         if not self.is_configured:
-            raise RuntimeError("COHERE_API_KEY is not set in environment / .env")
+            raise LLMConfigError("COHERE_API_KEY is not set in environment / .env")
 
         client = cohere.AsyncClientV2(api_key=settings.cohere_api_key)
 
@@ -130,10 +136,21 @@ class OllamaProvider(BaseLLMProvider):
             ],
         }
 
-        async with httpx.AsyncClient(timeout=settings.llm_timeout) as client:
-            resp = await client.post(url, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
+        try:
+            async with httpx.AsyncClient(timeout=settings.llm_timeout) as client:
+                resp = await client.post(url, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.ConnectError as exc:
+            raise ConnectionError(
+                f"Cannot reach Ollama at {settings.ollama_base_url}. "
+                f"Is the Ollama server running?"
+            ) from exc
+        except httpx.HTTPStatusError as exc:
+            body = exc.response.text[:300]
+            raise RuntimeError(
+                f"Ollama returned HTTP {exc.response.status_code}: {body}"
+            ) from exc
 
         content = data.get("message", {}).get("content", "")
         logger.debug("[Ollama] model={} done_reason={}", self.model, data.get("done_reason"))
