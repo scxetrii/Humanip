@@ -58,6 +58,11 @@ from backend.providers.base import (
 from backend.quality.evaluator import QualityEvaluator
 from config.settings import settings
 
+
+class RewriteQualityError(LLMError):
+    """The model copied, summarised, or truncated instead of rewriting."""
+
+
 # ── Lazy singletons ──────────────────────────────────────────────────────────
 
 _analyzer:  TextAnalyzer   | None = None
@@ -294,7 +299,7 @@ async def _complete_ensuring_rewrite(
             break
         prompt = retry_prefix + user_prompt
 
-    raise LLMError(
+    raise RewriteQualityError(
         f"[{provider.name}] LLM did not produce a complete rewrite "
         f"({len(result.split())} output words vs "
         f"{len(source_text.split())} input words)"
@@ -444,6 +449,8 @@ async def _rewrite_chunk_with_split(
             per_call_timeout=float(settings.chunk_timeout),
         )
     except LLMConfigError:
+        raise
+    except RewriteQualityError:
         raise
     except LLMError as exc:
         if depth >= 2 or (deadline is not None and deadline.remaining() < 10.0):
