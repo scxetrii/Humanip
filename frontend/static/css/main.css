@@ -1126,7 +1126,7 @@ body.menu-open .menu-icon-close {
   position: absolute;
   left: 14px;
   right: 14px;
-  bottom: 12px;
+  top: 12px;
   z-index: 2;
   display: flex;
   flex-wrap: wrap;
@@ -2611,9 +2611,16 @@ code {
 @media (min-width: 1061px) {
   .workspace {
     height: clamp(460px, calc(100vh - 190px), 780px);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .controls-column {
+    min-height: 0;
   }
 
   .controls-card {
+    height: 100%;
+    min-height: 0;
     overflow-y: auto;
   }
 
@@ -2742,7 +2749,7 @@ code {
   }
 
   .tool-card-head {
-  padding: 18px 18px 54px;
+  padding: 54px 18px 18px;
   }
 
   .workspace {
