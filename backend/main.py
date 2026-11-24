@@ -142,5 +142,8 @@ if FRONTEND_DIR.exists():
     async def serve_frontend():
         index = FRONTEND_DIR / "index.html"
         if index.exists():
-            return FileResponse(str(index))
+            return FileResponse(
+                str(index),
+                headers={"Cache-Control": "no-cache, must-revalidate"},
+            )
         return JSONResponse({"app": settings.app_name, "docs": "/docs"})
