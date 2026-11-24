@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     )
 
     # ── App ───────────────────────────────────────────────────────────────────
-    app_name: str = "AI Text Humanizer"
+    app_name: str = "Humanip"
     app_version: str = "1.0.0"
     debug: bool = False
 

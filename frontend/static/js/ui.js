@@ -73,10 +73,18 @@ function renderHumanMeter(score) {
 
   const pct = Math.max(0, Math.min(100, Math.round(Number(score))));
   const fill = document.getElementById('humanMeterFill');
+  const band = pct >= 75 ? 'high' : pct >= 50 ? 'mid' : 'low';
   meter.hidden = false;
+  meter.dataset.band = band;
+  meter.setAttribute('aria-valuenow', pct);
   fill.style.width = `${pct}%`;
-  fill.style.background = pct >= 75 ? '#12b76a' : pct >= 50 ? '#f79009' : '#f04438';
-  document.getElementById('humanMeterValue').textContent = `${pct}%`;
+  fill.style.background =
+    band === 'high'
+      ? 'linear-gradient(90deg, #16a34a, #4ade80)'
+      : band === 'mid'
+        ? 'linear-gradient(90deg, #d97706, #fbbf24)'
+        : 'linear-gradient(90deg, #dc2626, #f87171)';
+  document.getElementById('humanMeterValue').textContent = pct;
 }
 
 

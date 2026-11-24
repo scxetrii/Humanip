@@ -69,8 +69,9 @@ app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description=(
-        "Advanced AI Text Humanizer API – converts AI-generated text into "
-        "natural, fluent human prose while preserving all factual content."
+        "Humanip API – advanced AI text humanization that converts "
+        "AI-generated text into natural, fluent human prose while preserving "
+        "all factual content."
     ),
     lifespan=lifespan,
     docs_url="/docs",

@@ -192,10 +192,11 @@ main {
 
 .nav-link {
   position: relative;
-  padding: 6px 0;
-  font-size: 0.86rem;
-  font-weight: 500;
-  color: var(--text-2);
+  padding: 8px 2px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text);
   transition: color var(--transition);
 }
 
@@ -580,6 +581,7 @@ main {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+  overscroll-behavior: contain;
 }
 
 .control-group {
@@ -867,6 +869,8 @@ main {
   font-family: var(--font);
   font-size: 0.91rem;
   line-height: 1.82;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .editor::placeholder {
@@ -942,44 +946,98 @@ main {
   color: var(--accent);
 }
 
-.human-meter {
+.digital-meter {
+  flex-shrink: 0;
+  margin: 14px 16px 0;
+  padding: 14px 16px 12px;
+  border: 1px solid #22314d;
+  border-radius: 14px;
+  background:
+    radial-gradient(220px 90px at 100% 0%, rgba(74, 222, 128, 0.12), transparent 70%),
+    linear-gradient(135deg, #0d1628 0%, #111d33 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 14px 30px -22px rgba(8, 15, 30, 0.9);
+}
+
+.digital-meter-head {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 5px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface-soft);
-  font-size: 0.71rem;
-  color: var(--text-2);
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.human-meter-label {
+.digital-meter-label {
+  font-size: 0.66rem;
   font-weight: 700;
-  color: var(--text);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8fa3c0;
 }
 
-.human-meter-track {
-  width: 84px;
-  height: 6px;
+.digital-meter-est {
+  font-size: 0.56rem;
+  letter-spacing: 0.08em;
+  color: #64748b;
+}
+
+.digital-meter-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.digital-meter-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 2.35rem;
+  font-weight: 700;
+  line-height: 0.9;
+  letter-spacing: -0.06em;
+  color: #4ade80;
+  text-shadow: 0 0 22px rgba(74, 222, 128, 0.4);
+}
+
+.digital-meter[data-band='mid'] .digital-meter-value {
+  color: #fbbf24;
+  text-shadow: 0 0 22px rgba(251, 191, 36, 0.35);
+}
+
+.digital-meter[data-band='low'] .digital-meter-value {
+  color: #f87171;
+  text-shadow: 0 0 22px rgba(248, 113, 113, 0.35);
+}
+
+.digital-meter-unit {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #8fa3c0;
+}
+
+.digital-meter-track {
+  height: 7px;
+  margin-top: 10px;
   border-radius: 999px;
-  background: var(--border);
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0 1px, transparent 1px 10%),
+    rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 
-.human-meter-fill {
+.digital-meter-fill {
   height: 100%;
   width: 0;
-  border-radius: 999px;
-  background: var(--success);
+  border-radius: inherit;
+  background: linear-gradient(90deg, #16a34a, #4ade80);
+  box-shadow: 0 0 14px rgba(74, 222, 128, 0.6);
   transition: width 0.6s ease, background 0.3s;
 }
 
-.human-meter-value {
-  min-width: 32px;
-  text-align: right;
-  font-weight: 700;
-  color: var(--text);
+.digital-meter-note {
+  margin-top: 8px;
+  font-size: 0.62rem;
+  line-height: 1.4;
+  color: #7e8ca3;
 }
 
 /* Tabs */
@@ -1026,6 +1084,7 @@ main {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 16px 18px;
 }
 
@@ -1572,6 +1631,13 @@ main {
   font-size: 0.83rem;
   line-height: 1.5;
   color: var(--text-2);
+}
+
+.score-note {
+  margin-top: 14px;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--text-3);
 }
 
 /* FAQ */
@@ -2174,6 +2240,28 @@ code {
 
   html {
     scroll-behavior: auto;
+  }
+}
+
+/* Viewport-sized workspace on desktop so the editor scrolls internally */
+
+@media (min-width: 1061px) {
+  .workspace {
+    height: clamp(620px, calc(100vh - 170px), 820px);
+  }
+
+  .controls-card {
+    overflow-y: auto;
+  }
+
+  .panel {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .editor-wrapper,
+  .editor {
+    min-height: 0;
   }
 }
 

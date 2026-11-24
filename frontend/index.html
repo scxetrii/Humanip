@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="Turn stiff, repetitive AI text into clear, natural writing while keeping your ideas, citations and technical terms intact." />
-  <title>Humanizer — AI Humanizer for Clear, Natural Writing</title>
+  <title>Humanip — AI Humanizer for Clear, Natural Writing</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -23,16 +23,13 @@
           <svg viewBox="0 0 24 24" fill="none"><path d="M4 15c2.5 0 3.5-6 6-6s3.5 6 6 6 3.5-6 4-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </span>
         <span class="brand-text">
-          <span class="brand-name">Humanizer</span>
+          <span class="brand-name">Humanip</span>
           <span class="brand-sub">AI text → natural prose</span>
         </span>
       </a>
 
       <nav class="main-nav">
-        <a href="#humanizer" class="nav-link is-active">Humanizer</a>
-        <a href="#how-it-works" class="nav-link">How it works</a>
-        <a href="#features" class="nav-link">Features</a>
-        <a href="#faq" class="nav-link">FAQ</a>
+        <a href="#humanizer" class="nav-link is-active">Humanip</a>
       </nav>
 
       <div class="header-actions">
@@ -78,7 +75,7 @@
       <div class="tool-card">
         <div class="tool-card-head">
           <div class="tool-card-title">
-            <span class="tool-kicker">Humanizer workspace</span>
+            <span class="tool-kicker">Humanip workspace</span>
             <h2>Refine your draft</h2>
           </div>
           <div class="tool-card-badges">
@@ -222,7 +219,7 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
                 <span class="stat-sep">·</span>
                 <span class="stat-item"><strong id="inputSentences">0</strong> sentences</span>
               </div>
-              <div class="analysis-badge" id="analysisBadge" hidden>
+              <div class="analysis-badge" id="analysisBadge" hidden title="Internal style heuristic based on stock phrases and sentence variety — not a third-party AI-detector result">
                 <span class="ai-score-label">AI-pattern score</span>
                 <span class="ai-score-value" id="aiScore">—</span>
               </div>
@@ -253,6 +250,20 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
                 </div>
                 <button class="btn btn-ghost btn-xs" id="resetOutput" title="Reset">Reset</button>
               </div>
+            </div>
+
+            <div class="digital-meter" id="humanMeter" hidden role="meter" aria-label="Naturalness estimate" aria-valuemin="0" aria-valuemax="100">
+              <div class="digital-meter-head">
+                <span class="digital-meter-label">Naturalness <span class="digital-meter-est">est.</span></span>
+                <div class="digital-meter-readout">
+                  <span class="digital-meter-value" id="humanMeterValue">—</span>
+                  <span class="digital-meter-unit">%</span>
+                </div>
+              </div>
+              <div class="digital-meter-track">
+                <div class="digital-meter-fill" id="humanMeterFill"></div>
+              </div>
+              <p class="digital-meter-note">Internal style estimate — not a third-party AI-detector score.</p>
             </div>
 
             <div class="output-tabs-bar">
@@ -326,13 +337,6 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
                 <span class="stat-item"><strong id="outputChars">—</strong> chars</span>
                 <span class="stat-sep">·</span>
                 <span class="stat-item" id="processingTime">—</span>
-              </div>
-              <div class="human-meter" id="humanMeter" hidden title="Estimated human-likeness of the output">
-                <span class="human-meter-label">Human</span>
-                <div class="human-meter-track">
-                  <div class="human-meter-fill" id="humanMeterFill"></div>
-                </div>
-                <span class="human-meter-value" id="humanMeterValue">—%</span>
               </div>
             </div>
           </section>
@@ -437,7 +441,8 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
           <div class="section-head section-head-left">
             <span class="section-kicker">Review priority</span>
             <h2>Which passages to humanize first</h2>
-            <p>Use detection feedback to choose passages for a closer review. The higher the AI-pattern score, the more the wording may benefit from rewriting.</p>
+            <p>Use the analysis feedback to choose passages for a closer review. The higher the AI-pattern score, the more the wording may benefit from rewriting.</p>
+            <p class="score-note">Scores are internal style heuristics. They are not results from Turnitin, TurnitinDetector, or any other third-party AI detector, which use different models and may disagree.</p>
           </div>
           <div class="score-table">
             <div class="score-row">
@@ -490,6 +495,10 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
             <summary>Does humanizing text make it original?</summary>
             <p>Rewriting alone does not establish originality or replace attribution. Cite borrowed ideas and make sure your work includes your own reasoning and contribution.</p>
           </details>
+          <details class="faq-item">
+            <summary>Does the score match Turnitin or other AI detectors?</summary>
+            <p>No. The naturalness meter and AI-pattern score are internal style estimates. Third-party detectors use their own models and can return very different results, so use these scores to guide editing rather than as a detector prediction.</p>
+          </details>
         </div>
       </div>
     </section>
@@ -514,7 +523,7 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
           <span class="brand-mark brand-mark-sm">
             <svg viewBox="0 0 24 24" fill="none"><path d="M4 15c2.5 0 3.5-6 6-6s3.5 6 6 6 3.5-6 4-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </span>
-          <span class="brand-name">Humanizer</span>
+          <span class="brand-name">Humanip</span>
         </a>
         <p>Clearer sentences, a more natural tone, and a draft that still sounds like you wrote it.</p>
       </div>
@@ -533,7 +542,7 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
       </div>
     </div>
     <div class="footer-bottom">
-      <p>© 2026 Humanizer. All rights reserved.</p>
+      <p>© 2026 Humanip. All rights reserved.</p>
       <p>Your text is processed for this request and stored only in your local history.</p>
     </div>
   </footer>

@@ -2,7 +2,7 @@
 """
 run.py
 ───────
-Convenience script to start the AI Text Humanizer server.
+Convenience script to start the Humanip server.
 
 Usage:
     python run.py              # start with defaults from .env
@@ -30,7 +30,7 @@ from config.settings import settings
 @click.option("--reload", is_flag=True, default=False, help="Enable auto-reload on code changes")
 @click.option("--workers",default=None, type=int, help="Number of worker processes")
 def main(host, port, reload, workers):
-    """Start the AI Text Humanizer API server."""
+    """Start the Humanip API server."""
     _host    = host    or settings.api_host
     _port    = port    or settings.api_port
     _workers = workers or settings.api_workers

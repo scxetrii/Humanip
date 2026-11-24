@@ -1,4 +1,4 @@
-# AI Text Humanizer
+# Humanip
 
 A production-ready tool that converts AI-generated, robotic, or unnatural text into fluent, natural human prose — while preserving all facts, citations, numbers, and technical terms.
 
