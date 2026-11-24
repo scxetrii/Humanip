@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEditor();
   setupOutput();
   setupModals();
+  setupNav();
   setupDragDrop();
   await loadProviderStatus();
 });
@@ -54,6 +55,103 @@ async function loadProviderStatus() {
     document.getElementById('providerName').textContent = 'API offline';
     document.querySelector('.provider-dot').style.background = '#f04438';
   }
+}
+
+
+function closeMobileNav() {
+  const menu = document.getElementById('mobileMenu');
+  const backdrop = document.getElementById('mobileMenuBackdrop');
+  const toggle = document.getElementById('menuToggle');
+  if (!menu) return;
+
+  menu.hidden = true;
+  if (backdrop) backdrop.hidden = true;
+  if (toggle) {
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-label', 'Open menu');
+  }
+  document.body.classList.remove('menu-open');
+}
+
+function setupNav() {
+  const menu = document.getElementById('mobileMenu');
+  const backdrop = document.getElementById('mobileMenuBackdrop');
+  const toggle = document.getElementById('menuToggle');
+  if (!menu || !toggle) return;
+
+  const openMenu = () => {
+    menu.hidden = false;
+    if (backdrop) backdrop.hidden = false;
+    toggle.setAttribute('aria-expanded', 'true');
+    toggle.setAttribute('aria-label', 'Close menu');
+    document.body.classList.add('menu-open');
+    requestNavUpdate();
+  };
+
+  toggle.addEventListener('click', () => {
+    if (menu.hidden) openMenu();
+    else closeMobileNav();
+  });
+
+  if (backdrop) backdrop.addEventListener('click', closeMobileNav);
+
+  menu.querySelectorAll('a[href^="#"]').forEach(link => {
+    link.addEventListener('click', closeMobileNav);
+  });
+
+  document.querySelectorAll('[data-mobile-action]').forEach(button => {
+    button.addEventListener('click', () => {
+      const action = button.dataset.mobileAction;
+      closeMobileNav();
+      document.getElementById(action === 'history' ? 'historyToggle' : 'settingsToggle')?.click();
+    });
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !menu.hidden) {
+      closeMobileNav();
+      toggle.focus();
+    }
+  });
+
+  const desktop = window.matchMedia('(min-width: 1121px)');
+  desktop.addEventListener('change', event => {
+    if (event.matches) closeMobileNav();
+  });
+
+  const navLinks = Array.from(document.querySelectorAll('[data-nav]'));
+  const sections = navLinks
+    .map(link => document.querySelector(link.getAttribute('href')))
+    .filter(Boolean);
+
+  const updateActiveNav = () => {
+    navFrame = null;
+    if (!sections.length) return;
+
+    const probe = window.innerHeight * 0.35;
+    let current = sections[0];
+    sections.forEach(section => {
+      if (section.getBoundingClientRect().top <= probe) current = section;
+    });
+
+    const activeHash = `#${current.id}`;
+    navLinks.forEach(link => {
+      const isActive = link.getAttribute('href') === activeHash;
+      link.classList.toggle('is-active', isActive);
+      if (isActive) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+  };
+
+  let navFrame = null;
+  const requestNavUpdate = () => {
+    if (navFrame !== null) return;
+    navFrame = window.requestAnimationFrame(updateActiveNav);
+  };
+
+  window.addEventListener('scroll', requestNavUpdate, { passive: true });
+  window.addEventListener('resize', requestNavUpdate);
+  updateActiveNav();
 }
 
 
@@ -428,6 +526,7 @@ function setupModals() {
   // Settings modal
   const settingsModal = document.getElementById('settingsModal');
   document.getElementById('settingsToggle').addEventListener('click', async () => {
+    closeMobileNav();
     settingsModal.hidden = false;
     // Load provider list
     try {
@@ -458,6 +557,7 @@ function setupModals() {
   // History drawer
   const historyDrawer = document.getElementById('historyDrawer');
   document.getElementById('historyToggle').addEventListener('click', async () => {
+    closeMobileNav();
     historyDrawer.hidden = false;
     try {
       const data = await fetchHistory();
