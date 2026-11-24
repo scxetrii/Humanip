@@ -201,12 +201,12 @@ main {
 .main-nav {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   padding: 4px;
-  border: 1px solid rgba(211, 220, 238, 0.85);
+  border: 1px solid rgba(47, 91, 234, 0.18);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.64);
-  box-shadow: 0 8px 24px -18px rgba(16, 24, 40, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  background: linear-gradient(135deg, rgba(47, 91, 234, 0.1), rgba(123, 97, 255, 0.12));
+  box-shadow: 0 10px 26px -16px rgba(47, 91, 234, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
@@ -225,26 +225,33 @@ main {
 }
 
 .nav-link:hover {
-  color: var(--text);
+  color: var(--accent);
   background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 4px 12px -8px rgba(47, 91, 234, 0.5);
 }
 
 .nav-link.is-active {
-  color: var(--accent);
-  background: linear-gradient(135deg, rgba(47, 91, 234, 0.12), rgba(123, 97, 255, 0.12));
-  box-shadow: inset 0 0 0 1px rgba(47, 91, 234, 0.12);
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  box-shadow: 0 8px 18px -10px rgba(47, 91, 234, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
 .nav-icon {
   width: 15px;
   height: 15px;
-  color: var(--text-3);
-  transition: color var(--transition);
+  color: var(--accent);
+  opacity: 0.6;
+  transition: color var(--transition), opacity var(--transition);
 }
 
-.nav-link:hover .nav-icon,
-.nav-link.is-active .nav-icon {
+.nav-link:hover .nav-icon {
   color: var(--accent);
+  opacity: 1;
+}
+
+.nav-link.is-active .nav-icon {
+  color: #fff;
+  opacity: 1;
 }
 
 .header-actions {
@@ -1108,7 +1115,6 @@ body.menu-open .menu-icon-close {
   font-family: var(--font);
   font-size: 0.91rem;
   line-height: 1.82;
-  overscroll-behavior: contain;
   scrollbar-width: thin;
 }
 
@@ -2572,7 +2578,7 @@ code {
 
 @media (min-width: 1061px) {
   .workspace {
-    height: clamp(620px, calc(100vh - 170px), 820px);
+    height: clamp(460px, calc(100vh - 190px), 780px);
   }
 
   .controls-card {
