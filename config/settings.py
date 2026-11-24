@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    openai_fallback_model: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
 
     # Anthropic
@@ -79,6 +80,13 @@ class Settings(BaseSettings):
     llm_max_retries: int = 2         # attempts before giving up
     llm_total_timeout: int = 90      # hard cap for the whole LLM call
     humanize_timeout: int = 110      # overall LLM budget for one humanization run
+
+    # ── Large-document handling ──────────────────────────────────────────────
+    chunk_threshold_words: int = 900   # above this, rewrite in chunks
+    chunk_max_words: int = 600         # target words per chunk
+    chunk_max_chars: int = 4000        # hard character cap per chunk
+    chunk_concurrency: int = 4         # parallel LLM calls per document
+    diff_max_words: int = 4000         # skip word-level diff above this
 
     # ── NLP ───────────────────────────────────────────────────────────────────
     spacy_model: str = "en_core_web_sm"   # or en_core_web_md / lg

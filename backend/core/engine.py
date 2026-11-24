@@ -49,7 +49,12 @@ from backend.core.schemas import (
     WritingMode,
 )
 from backend.preservation.guardian import PreservationGuardian
-from backend.providers.base import LLMError, LLMTimeoutError, ProviderRegistry
+from backend.providers.base import (
+    LLMConfigError,
+    LLMError,
+    LLMTimeoutError,
+    ProviderRegistry,
+)
 from backend.quality.evaluator import QualityEvaluator
 from config.settings import settings
 
@@ -114,6 +119,13 @@ def _build_diff(original: str, rewritten: str) -> list[DiffSegment]:
     import difflib
     orig_words = original.split()
     new_words  = rewritten.split()
+
+    if len(orig_words) > settings.diff_max_words or len(new_words) > settings.diff_max_words:
+        logger.info(
+            "Skipping word-level diff for large text ({} -> {} words)",
+            len(orig_words), len(new_words),
+        )
+        return [DiffSegment(text=rewritten, change_type="equal")]
 
     segments: list[DiffSegment] = []
     matcher = difflib.SequenceMatcher(None, orig_words, new_words, autojunk=False)
@@ -258,6 +270,227 @@ async def _complete_ensuring_rewrite(
     return result
 
 
+# ── Large-document chunking ───────────────────────────────────────────────────
+
+def _split_words(words: list[str], max_words: int, max_chars: int) -> list[str]:
+    """Split a word list into groups bounded by word and character counts."""
+    groups: list[str] = []
+    current: list[str] = []
+    current_chars = 0
+
+    for word in words:
+        if current and (
+            len(current) >= max_words
+            or current_chars + len(word) + 1 > max_chars
+        ):
+            groups.append(" ".join(current))
+            current = []
+            current_chars = 0
+        current.append(word)
+        current_chars += len(word) + 1
+
+    if current:
+        groups.append(" ".join(current))
+    return groups
+
+
+def _split_paragraph(paragraph: str, max_words: int, max_chars: int) -> list[str]:
+    """Split one oversized paragraph into sentence-aligned pieces."""
+    if len(paragraph.split()) <= max_words and len(paragraph) <= max_chars:
+        return [paragraph]
+
+    sentences = sent_tokenize(paragraph)
+    groups: list[str] = []
+    current: list[str] = []
+    current_words = 0
+    current_chars = 0
+
+    for sentence in sentences:
+        words = len(sentence.split())
+        chars = len(sentence)
+
+        if words > max_words or chars > max_chars:
+            if current:
+                groups.append(" ".join(current))
+                current, current_words, current_chars = [], 0, 0
+            groups.extend(_split_words(sentence.split(), max_words, max_chars))
+            continue
+
+        if current and (
+            current_words + words > max_words
+            or current_chars + chars + 1 > max_chars
+        ):
+            groups.append(" ".join(current))
+            current, current_words, current_chars = [], 0, 0
+
+        current.append(sentence)
+        current_words += words
+        current_chars += chars + 1
+
+    if current:
+        groups.append(" ".join(current))
+    return groups
+
+
+def _split_into_chunks(text: str, max_words: int, max_chars: int) -> list[str]:
+    """Split text on paragraph/sentence boundaries into bounded chunks."""
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    blocks: list[str] = []
+    for paragraph in paragraphs:
+        blocks.extend(_split_paragraph(paragraph, max_words, max_chars))
+
+    chunks: list[str] = []
+    current: list[str] = []
+    current_words = 0
+    current_chars = 0
+
+    for block in blocks:
+        words = len(block.split())
+        chars = len(block)
+
+        if current and (
+            current_words + words > max_words
+            or current_chars + chars + 2 > max_chars
+        ):
+            chunks.append("\n\n".join(current))
+            current, current_words, current_chars = [], 0, 0
+
+        current.append(block)
+        current_words += words
+        current_chars += chars + 2
+
+    if current:
+        chunks.append("\n\n".join(current))
+    return chunks
+
+
+async def _rewrite_chunk_with_split(
+    provider,
+    chunk: str,
+    analysis: TextAnalysis,
+    request: HumanizeRequest,
+    system_prompt: str,
+    deadline: _Deadline | None = None,
+    depth: int = 0,
+) -> str:
+    """Rewrite one chunk, splitting it further if the provider rejects it."""
+    user_prompt = build_user_prompt(
+        chunk, analysis,
+        request.preserve_citations,
+        request.preserve_technical_terms,
+    )
+    words = len(chunk.split())
+    max_tokens = max(512, min(settings.llm_max_tokens, int(words * 2.2) + 128))
+
+    try:
+        return await _complete_ensuring_rewrite(
+            provider, system_prompt, user_prompt, chunk,
+            max_tokens=max_tokens, max_attempts=2, deadline=deadline,
+        )
+    except (LLMConfigError, LLMTimeoutError):
+        raise
+    except LLMError as exc:
+        if depth >= 2 or (deadline is not None and deadline.remaining() < 10.0):
+            raise
+        parts = _split_into_chunks(
+            chunk,
+            max(120, settings.chunk_max_words // 2),
+            max(800, settings.chunk_max_chars // 2),
+        )
+        if len(parts) <= 1:
+            raise
+        logger.warning(
+            "Chunk rewrite failed ({}); retrying as {} smaller chunks",
+            exc, len(parts),
+        )
+        rewritten: list[str] = []
+        for part in parts:
+            rewritten.append(
+                await _rewrite_chunk_with_split(
+                    provider, part, analysis, request, system_prompt,
+                    deadline, depth + 1,
+                )
+            )
+        return "\n\n".join(rewritten)
+
+
+async def _rewrite_in_chunks(
+    text: str,
+    analysis: TextAnalysis,
+    request: HumanizeRequest,
+    system_prompt: str,
+    deadline: _Deadline | None = None,
+) -> str:
+    """Rewrite a large document in bounded chunks, preserving paragraph breaks."""
+    provider = ProviderRegistry.active()
+    chunks = _split_into_chunks(
+        text, settings.chunk_max_words, settings.chunk_max_chars
+    )
+    if len(chunks) <= 1:
+        return await _rewrite_chunk_with_split(
+            provider, text, analysis, request, system_prompt, deadline
+        )
+
+    logger.info(
+        "Large document: {} words -> {} chunks (max {} words each)",
+        len(text.split()), len(chunks), settings.chunk_max_words,
+    )
+    sem = asyncio.Semaphore(max(1, settings.chunk_concurrency))
+
+    async def _do_one(chunk: str):
+        async with sem:
+            if deadline is not None and deadline.remaining() < 2.0:
+                raise LLMTimeoutError(
+                    f"[{provider.name}] Humanization exceeded the "
+                    f"{settings.humanize_timeout}s time budget"
+                )
+            try:
+                rewritten = await _rewrite_chunk_with_split(
+                    provider, chunk, analysis, request, system_prompt, deadline
+                )
+                return True, rewritten
+            except (LLMConfigError, LLMTimeoutError):
+                raise
+            except LLMError as exc:
+                return False, exc
+
+    tasks = [asyncio.create_task(_do_one(chunk)) for chunk in chunks]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    rewritten_chunks: list[str] = []
+    failures = 0
+    last_error: LLMError | None = None
+
+    for chunk, result in zip(chunks, results):
+        if isinstance(result, (LLMConfigError, LLMTimeoutError)):
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise result
+        if isinstance(result, BaseException):
+            failures += 1
+            last_error = LLMError(str(result))
+            rewritten_chunks.append(chunk)
+            continue
+
+        ok, value = result
+        if ok:
+            rewritten_chunks.append(value)
+        else:
+            failures += 1
+            last_error = value
+            rewritten_chunks.append(chunk)
+
+    if failures == len(chunks) and last_error is not None:
+        raise last_error
+    if failures:
+        logger.warning(
+            "{} of {} chunks kept original text after LLM failures",
+            failures, len(chunks),
+        )
+    return "\n\n".join(rewritten_chunks)
+
+
 # ── Sentence-level rewriting ──────────────────────────────────────────────────
 
 async def _rewrite_by_sentence(
@@ -381,7 +614,15 @@ class HumanizationEngine:
         deadline = _Deadline(settings.humanize_timeout)
 
         # ── Step 4: Call LLM (granularity-aware) ─────────────────────────────
-        if request.granularity == RewriteGranularity.SENTENCE:
+        if analysis.word_count >= settings.chunk_threshold_words:
+            logger.info(
+                "Using chunked rewrite for large document ({} words)",
+                analysis.word_count,
+            )
+            raw_output = await _rewrite_in_chunks(
+                guarded_text, analysis, request, system_prompt, deadline=deadline
+            )
+        elif request.granularity == RewriteGranularity.SENTENCE:
             raw_output = await _rewrite_by_sentence(
                 guarded_text, analysis, request, system_prompt, deadline=deadline
             )
@@ -395,25 +636,38 @@ class HumanizationEngine:
                 request.preserve_citations,
                 request.preserve_technical_terms,
             )
-            raw_output = await _complete_ensuring_rewrite(
-                provider, system_prompt, user_prompt, guarded_text,
-                deadline=deadline,
-            )
-            if _similarity(guarded_text, raw_output) >= _COPY_SIMILARITY_THRESHOLD:
-                if deadline.remaining() < 10.0:
-                    logger.warning(
-                        "Document-level output still copied but time budget is low; "
-                        "keeping the result instead of falling back."
-                    )
-                else:
-                    logger.warning(
-                        "Document-level output still copied after retries; "
-                        "falling back to paragraph-by-paragraph rewrite."
-                    )
-                    raw_output = await _rewrite_by_paragraph(
-                        guarded_text, analysis, request, system_prompt,
-                        deadline=deadline,
-                    )
+            try:
+                raw_output = await _complete_ensuring_rewrite(
+                    provider, system_prompt, user_prompt, guarded_text,
+                    deadline=deadline,
+                )
+            except LLMError as exc:
+                if isinstance(exc, (LLMConfigError, LLMTimeoutError)):
+                    raise
+                logger.warning(
+                    "Document-level rewrite failed ({}); falling back to chunks",
+                    exc,
+                )
+                raw_output = await _rewrite_in_chunks(
+                    guarded_text, analysis, request, system_prompt,
+                    deadline=deadline,
+                )
+            else:
+                if _similarity(guarded_text, raw_output) >= _COPY_SIMILARITY_THRESHOLD:
+                    if deadline.remaining() < 10.0:
+                        logger.warning(
+                            "Document-level output still copied but time budget is low; "
+                            "keeping the result instead of falling back."
+                        )
+                    else:
+                        logger.warning(
+                            "Document-level output still copied after retries; "
+                            "falling back to paragraph-by-paragraph rewrite."
+                        )
+                        raw_output = await _rewrite_by_paragraph(
+                            guarded_text, analysis, request, system_prompt,
+                            deadline=deadline,
+                        )
 
         # ── Step 5: Post-process ──────────────────────────────────────────────
         restored = guardian.restore(raw_output, placeholder_map)

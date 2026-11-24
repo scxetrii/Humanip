@@ -52,7 +52,6 @@ class HumanizeRequest(BaseModel):
     text: str = Field(
         ...,
         min_length=10,
-        max_length=50_000,
         description="The AI-generated text to humanize.",
     )
     mode: WritingMode = WritingMode.NATURAL

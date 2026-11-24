@@ -12,7 +12,12 @@ from __future__ import annotations
 
 from loguru import logger
 
-from backend.providers.base import BaseLLMProvider, LLMConfigError, ProviderRegistry
+from backend.providers.base import (
+    BaseLLMProvider,
+    LLMConfigError,
+    ProviderRegistry,
+    _status_code,
+)
 from config.settings import settings
 
 
@@ -58,23 +63,45 @@ class OpenAIProvider(BaseLLMProvider):
             max_retries=0,   # retries handled by BaseLLMProvider
         )
 
-        response = await client.chat.completions.create(
-            model=self.model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user",   "content": user_prompt},
-            ],
-        )
+        models = [self.model]
+        fallback = settings.openai_fallback_model.strip()
+        if fallback and fallback != self.model:
+            models.append(fallback)
 
-        content = response.choices[0].message.content or ""
-        logger.debug(
-            "[OpenAI] tokens used: prompt={} completion={}",
-            response.usage.prompt_tokens if response.usage else "?",
-            response.usage.completion_tokens if response.usage else "?",
-        )
-        return content
+        last_exc: Exception | None = None
+        for model in models:
+            try:
+                response = await client.chat.completions.create(
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user",   "content": user_prompt},
+                    ],
+                )
+            except Exception as exc:
+                last_exc = exc
+                code = _status_code(exc)
+                retryable = code is None or code in (408, 409, 425, 429) or code >= 500
+                if model != models[-1] and retryable:
+                    logger.warning(
+                        "[OpenAI] model {} failed ({}); retrying with fallback {}",
+                        model, code or type(exc).__name__, models[-1],
+                    )
+                    continue
+                raise
+
+            content = response.choices[0].message.content or ""
+            logger.debug(
+                "[OpenAI] model={} tokens used: prompt={} completion={}",
+                model,
+                response.usage.prompt_tokens if response.usage else "?",
+                response.usage.completion_tokens if response.usage else "?",
+            )
+            return content
+
+        raise last_exc  # pragma: no cover
 
 
 # ── Auto-register ─────────────────────────────────────────────────────────────
