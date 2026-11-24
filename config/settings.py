@@ -78,16 +78,17 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 4096
     llm_timeout: int = 60            # seconds per attempt
     llm_max_retries: int = 2         # attempts before giving up
+    llm_min_interval: float = 4.5    # minimum seconds between provider calls
     llm_total_timeout: int = 90      # hard cap for the whole LLM call
     humanize_timeout: int = 85       # overall LLM budget for one humanization run
     document_timeout: int = 45       # per-call cap before falling back to chunks
 
     # ── Large-document handling ──────────────────────────────────────────────
-    chunk_threshold_words: int = 250   # above this, rewrite in chunks
-    chunk_max_words: int = 300         # target words per chunk
-    chunk_max_chars: int = 2500        # hard character cap per chunk
-    chunk_concurrency: int = 4         # parallel LLM calls per document
-    chunk_timeout: int = 25            # seconds per chunk call (incl. fallbacks)
+    chunk_threshold_words: int = 500   # above this, rewrite in chunks
+    chunk_max_words: int = 800         # target words per chunk
+    chunk_max_chars: int = 7000        # hard character cap per chunk
+    chunk_concurrency: int = 3         # parallel LLM calls per document
+    chunk_timeout: int = 30            # seconds per chunk call (incl. fallbacks)
     diff_max_words: int = 3000         # skip word-level diff above this
 
     # ── NLP ───────────────────────────────────────────────────────────────────

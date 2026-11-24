@@ -10,6 +10,7 @@ Supports:
 """
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 
@@ -29,6 +30,27 @@ from config.settings import settings
 class OpenAIProvider(BaseLLMProvider):
 
     _exhausted_until: dict[str, float] = {}
+
+    def __init__(self) -> None:
+        self._rate_lock: asyncio.Lock | None = None
+        self._rate_loop: asyncio.AbstractEventLoop | None = None
+        self._next_call_at = 0.0
+
+    async def _throttle(self) -> None:
+        interval = max(0.0, float(settings.llm_min_interval))
+        if interval <= 0:
+            return
+        loop = asyncio.get_running_loop()
+        if self._rate_lock is None or self._rate_loop is not loop:
+            self._rate_lock = asyncio.Lock()
+            self._rate_loop = loop
+            self._next_call_at = 0.0
+        async with self._rate_lock:
+            start = max(time.monotonic(), self._next_call_at)
+            self._next_call_at = start + interval
+        delay = start - time.monotonic()
+        if delay > 0:
+            await asyncio.sleep(delay)
 
     @staticmethod
     def _quota_cooldown(exc: BaseException) -> float:
@@ -104,6 +126,7 @@ class OpenAIProvider(BaseLLMProvider):
         last_exc: Exception | None = None
         for index, model in enumerate(models):
             try:
+                await self._throttle()
                 response = await client.chat.completions.create(
                     model=model,
                     temperature=temperature,
