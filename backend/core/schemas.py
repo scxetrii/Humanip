@@ -146,6 +146,9 @@ class QualityMetrics(BaseModel):
     # Computed overall score (0–100)
     overall_score: float = Field(..., ge=0.0, le=100.0)
 
+    # Non-fatal issues (e.g. sections kept unchanged because the provider failed)
+    warnings: list[str] = Field(default_factory=list)
+
 
 class HumanizeResponse(BaseModel):
     """Full response from one humanization run."""

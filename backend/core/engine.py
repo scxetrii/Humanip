@@ -231,6 +231,7 @@ async def _complete_ensuring_rewrite(
     max_tokens: int | None = None,
     max_attempts: int = 2,
     deadline: _Deadline | None = None,
+    per_call_timeout: float | None = None,
 ) -> str:
     """Call the LLM, retrying when it echoes the input instead of rewriting it."""
     prompt = user_prompt
@@ -238,6 +239,8 @@ async def _complete_ensuring_rewrite(
 
     for attempt in range(1, max_attempts + 1):
         timeout = settings.llm_total_timeout
+        if per_call_timeout is not None:
+            timeout = min(timeout, max(1.0, per_call_timeout))
         if deadline is not None:
             remaining = deadline.remaining()
             if remaining < 2.0:
@@ -364,6 +367,29 @@ def _split_into_chunks(text: str, max_words: int, max_chars: int) -> list[str]:
     return chunks
 
 
+def _analysis_for_chunk(analysis: TextAnalysis, chunk: str) -> TextAnalysis:
+    """Keep only preservation and issue hints relevant to one chunk."""
+    lowered = chunk.lower()
+
+    def _present(values: list[str], limit: int) -> list[str]:
+        return [value for value in values if value.lower() in lowered][:limit]
+
+    return analysis.model_copy(update={
+        # Citations and terms are placeholder-protected; listing the originals
+        # again would only inflate every chunk prompt.
+        "citations": [],
+        "technical_terms": [],
+        "numerical_values": _present(analysis.numerical_values, 20),
+        "repetitive_structures": [
+            issue for issue in analysis.repetitive_structures
+            if issue.phrase.lower() in lowered
+        ][:5],
+        "excessive_transitions": _present(analysis.excessive_transitions, 5),
+        "unnatural_phrases": _present(analysis.unnatural_phrases, 5),
+        "overly_formal_expressions": _present(analysis.overly_formal_expressions, 5),
+    })
+
+
 async def _rewrite_chunk_with_split(
     provider,
     chunk: str,
@@ -374,8 +400,9 @@ async def _rewrite_chunk_with_split(
     depth: int = 0,
 ) -> str:
     """Rewrite one chunk, splitting it further if the provider rejects it."""
+    chunk_analysis = _analysis_for_chunk(analysis, chunk)
     user_prompt = build_user_prompt(
-        chunk, analysis,
+        chunk, chunk_analysis,
         request.preserve_citations,
         request.preserve_technical_terms,
     )
@@ -386,8 +413,9 @@ async def _rewrite_chunk_with_split(
         return await _complete_ensuring_rewrite(
             provider, system_prompt, user_prompt, chunk,
             max_tokens=max_tokens, max_attempts=2, deadline=deadline,
+            per_call_timeout=float(settings.chunk_timeout),
         )
-    except (LLMConfigError, LLMTimeoutError):
+    except LLMConfigError:
         raise
     except LLMError as exc:
         if depth >= 2 or (deadline is not None and deadline.remaining() < 10.0):
@@ -420,6 +448,7 @@ async def _rewrite_in_chunks(
     request: HumanizeRequest,
     system_prompt: str,
     deadline: _Deadline | None = None,
+    warnings: list[str] | None = None,
 ) -> str:
     """Rewrite a large document in bounded chunks, preserving paragraph breaks."""
     provider = ProviderRegistry.active()
@@ -427,9 +456,20 @@ async def _rewrite_in_chunks(
         text, settings.chunk_max_words, settings.chunk_max_chars
     )
     if len(chunks) <= 1:
-        return await _rewrite_chunk_with_split(
-            provider, text, analysis, request, system_prompt, deadline
-        )
+        try:
+            return await _rewrite_chunk_with_split(
+                provider, text, analysis, request, system_prompt, deadline
+            )
+        except LLMConfigError:
+            raise
+        except LLMError as exc:
+            logger.warning("Chunked rewrite failed ({}); keeping original text", exc)
+            if warnings is not None:
+                warnings.append(
+                    "The AI provider could not rewrite this document; the "
+                    "original text was kept. Please try again shortly."
+                )
+            return text
 
     logger.info(
         "Large document: {} words -> {} chunks (max {} words each)",
@@ -440,7 +480,7 @@ async def _rewrite_in_chunks(
     async def _do_one(chunk: str):
         async with sem:
             if deadline is not None and deadline.remaining() < 2.0:
-                raise LLMTimeoutError(
+                return False, LLMTimeoutError(
                     f"[{provider.name}] Humanization exceeded the "
                     f"{settings.humanize_timeout}s time budget"
                 )
@@ -449,7 +489,7 @@ async def _rewrite_in_chunks(
                     provider, chunk, analysis, request, system_prompt, deadline
                 )
                 return True, rewritten
-            except (LLMConfigError, LLMTimeoutError):
+            except LLMConfigError:
                 raise
             except LLMError as exc:
                 return False, exc
@@ -459,17 +499,15 @@ async def _rewrite_in_chunks(
 
     rewritten_chunks: list[str] = []
     failures = 0
-    last_error: LLMError | None = None
 
     for chunk, result in zip(chunks, results):
-        if isinstance(result, (LLMConfigError, LLMTimeoutError)):
+        if isinstance(result, LLMConfigError):
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             raise result
         if isinstance(result, BaseException):
             failures += 1
-            last_error = LLMError(str(result))
             rewritten_chunks.append(chunk)
             continue
 
@@ -478,12 +516,22 @@ async def _rewrite_in_chunks(
             rewritten_chunks.append(value)
         else:
             failures += 1
-            last_error = value
             rewritten_chunks.append(chunk)
 
-    if failures == len(chunks) and last_error is not None:
-        raise last_error
     if failures:
+        if failures == len(chunks):
+            message = (
+                "The AI provider was unavailable; the text was returned "
+                "unchanged. Please try again shortly."
+            )
+        else:
+            message = (
+                f"{failures} of {len(chunks)} sections could not be rewritten "
+                "and were kept unchanged because the AI provider failed. "
+                "Please try again shortly."
+            )
+        if warnings is not None:
+            warnings.append(message)
         logger.warning(
             "{} of {} chunks kept original text after LLM failures",
             failures, len(chunks),
@@ -612,6 +660,7 @@ class HumanizationEngine:
         )
         provider = ProviderRegistry.active()
         deadline = _Deadline(settings.humanize_timeout)
+        warnings: list[str] = []
 
         # ── Step 4: Call LLM (granularity-aware) ─────────────────────────────
         if analysis.word_count >= settings.chunk_threshold_words:
@@ -620,7 +669,8 @@ class HumanizationEngine:
                 analysis.word_count,
             )
             raw_output = await _rewrite_in_chunks(
-                guarded_text, analysis, request, system_prompt, deadline=deadline
+                guarded_text, analysis, request, system_prompt,
+                deadline=deadline, warnings=warnings,
             )
         elif request.granularity == RewriteGranularity.SENTENCE:
             raw_output = await _rewrite_by_sentence(
@@ -642,7 +692,9 @@ class HumanizationEngine:
                     deadline=deadline,
                 )
             except LLMError as exc:
-                if isinstance(exc, (LLMConfigError, LLMTimeoutError)):
+                if isinstance(exc, LLMConfigError):
+                    raise
+                if isinstance(exc, LLMTimeoutError) and deadline.remaining() < 10.0:
                     raise
                 logger.warning(
                     "Document-level rewrite failed ({}); falling back to chunks",
@@ -650,7 +702,7 @@ class HumanizationEngine:
                 )
                 raw_output = await _rewrite_in_chunks(
                     guarded_text, analysis, request, system_prompt,
-                    deadline=deadline,
+                    deadline=deadline, warnings=warnings,
                 )
             else:
                 if _similarity(guarded_text, raw_output) >= _COPY_SIMILARITY_THRESHOLD:
@@ -701,6 +753,9 @@ class HumanizationEngine:
                     "Quality evaluation still timing out; using neutral scores."
                 )
                 quality = _neutral_quality()
+
+        if warnings:
+            quality.warnings.extend(warnings)
 
         # ── Step 7: Build diff ────────────────────────────────────────────────
         diff = _build_diff(request.text, final)

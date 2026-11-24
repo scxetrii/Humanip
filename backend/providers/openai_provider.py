@@ -64,12 +64,13 @@ class OpenAIProvider(BaseLLMProvider):
         )
 
         models = [self.model]
-        fallback = settings.openai_fallback_model.strip()
-        if fallback and fallback != self.model:
-            models.append(fallback)
+        for candidate in settings.openai_fallback_model.split(","):
+            candidate = candidate.strip()
+            if candidate and candidate not in models:
+                models.append(candidate)
 
         last_exc: Exception | None = None
-        for model in models:
+        for index, model in enumerate(models):
             try:
                 response = await client.chat.completions.create(
                     model=model,
@@ -83,11 +84,17 @@ class OpenAIProvider(BaseLLMProvider):
             except Exception as exc:
                 last_exc = exc
                 code = _status_code(exc)
-                retryable = code is None or code in (408, 409, 425, 429) or code >= 500
-                if model != models[-1] and retryable:
+                retryable = (
+                    code is None
+                    or code in (404, 408, 409, 425, 429)
+                    or code >= 500
+                )
+                if index < len(models) - 1 and retryable:
                     logger.warning(
-                        "[OpenAI] model {} failed ({}); retrying with fallback {}",
-                        model, code or type(exc).__name__, models[-1],
+                        "[OpenAI] model {} failed ({}); trying fallback chain: {}",
+                        model,
+                        code or type(exc).__name__,
+                        ", ".join(models[index + 1:]),
                     )
                     continue
                 raise
