@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     llm_max_retries: int = 2         # attempts before giving up
     llm_total_timeout: int = 90      # hard cap for the whole LLM call
     humanize_timeout: int = 85       # overall LLM budget for one humanization run
+    document_timeout: int = 45       # per-call cap before falling back to chunks
 
     # ── Large-document handling ──────────────────────────────────────────────
     chunk_threshold_words: int = 250   # above this, rewrite in chunks

@@ -698,63 +698,82 @@ class HumanizationEngine:
         warnings: list[str] = []
 
         # ── Step 4: Call LLM (granularity-aware) ─────────────────────────────
-        if analysis.word_count >= settings.chunk_threshold_words:
-            logger.info(
-                "Using chunked rewrite for large document ({} words)",
-                analysis.word_count,
-            )
-            raw_output = await _rewrite_in_chunks(
-                guarded_text, analysis, request, system_prompt,
-                deadline=deadline, warnings=warnings,
-            )
-        elif request.granularity == RewriteGranularity.SENTENCE:
-            raw_output = await _rewrite_by_sentence(
-                guarded_text, analysis, request, system_prompt, deadline=deadline
-            )
-        elif request.granularity == RewriteGranularity.PARAGRAPH:
-            raw_output = await _rewrite_by_paragraph(
-                guarded_text, analysis, request, system_prompt, deadline=deadline
-            )
-        else:  # DOCUMENT
-            user_prompt = build_user_prompt(
-                guarded_text, analysis,
-                request.preserve_citations,
-                request.preserve_technical_terms,
-            )
-            try:
-                raw_output = await _complete_ensuring_rewrite(
-                    provider, system_prompt, user_prompt, guarded_text,
-                    deadline=deadline,
-                )
-            except LLMError as exc:
-                if isinstance(exc, LLMConfigError):
-                    raise
-                if isinstance(exc, LLMTimeoutError) and deadline.remaining() < 10.0:
-                    raise
-                logger.warning(
-                    "Document-level rewrite failed ({}); falling back to chunks",
-                    exc,
+        request_words = len(request.text.split())
+        try:
+            if request_words >= settings.chunk_threshold_words:
+                logger.info(
+                    "Using chunked rewrite for large document ({} words)",
+                    request_words,
                 )
                 raw_output = await _rewrite_in_chunks(
                     guarded_text, analysis, request, system_prompt,
                     deadline=deadline, warnings=warnings,
                 )
-            else:
-                if _similarity(guarded_text, raw_output) >= _COPY_SIMILARITY_THRESHOLD:
-                    if deadline.remaining() < 10.0:
-                        logger.warning(
-                            "Document-level output still copied but time budget is low; "
-                            "keeping the result instead of falling back."
-                        )
-                    else:
-                        logger.warning(
-                            "Document-level output still copied after retries; "
-                            "falling back to paragraph-by-paragraph rewrite."
-                        )
-                        raw_output = await _rewrite_by_paragraph(
-                            guarded_text, analysis, request, system_prompt,
-                            deadline=deadline,
-                        )
+            elif request.granularity == RewriteGranularity.SENTENCE:
+                raw_output = await _rewrite_by_sentence(
+                    guarded_text, analysis, request, system_prompt, deadline=deadline
+                )
+            elif request.granularity == RewriteGranularity.PARAGRAPH:
+                raw_output = await _rewrite_by_paragraph(
+                    guarded_text, analysis, request, system_prompt, deadline=deadline
+                )
+            else:  # DOCUMENT
+                user_prompt = build_user_prompt(
+                    guarded_text, analysis,
+                    request.preserve_citations,
+                    request.preserve_technical_terms,
+                )
+                try:
+                    raw_output = await _complete_ensuring_rewrite(
+                        provider, system_prompt, user_prompt, guarded_text,
+                        deadline=deadline,
+                        per_call_timeout=float(settings.document_timeout),
+                    )
+                except LLMError as exc:
+                    if isinstance(exc, LLMConfigError):
+                        raise
+                    logger.warning(
+                        "Document-level rewrite failed ({}); falling back to chunks",
+                        exc,
+                    )
+                    raw_output = await _rewrite_in_chunks(
+                        guarded_text, analysis, request, system_prompt,
+                        deadline=deadline, warnings=warnings,
+                    )
+                else:
+                    if _similarity(
+                        guarded_text, raw_output
+                    ) >= _COPY_SIMILARITY_THRESHOLD:
+                        if deadline.remaining() < 10.0:
+                            logger.warning(
+                                "Document-level output still copied but time budget "
+                                "is low; keeping the result instead of falling back."
+                            )
+                        else:
+                            logger.warning(
+                                "Document-level output still copied after retries; "
+                                "falling back to paragraph-by-paragraph rewrite."
+                            )
+                            raw_output = await _rewrite_by_paragraph(
+                                guarded_text, analysis, request, system_prompt,
+                                deadline=deadline,
+                            )
+        except LLMConfigError:
+            raise
+        except LLMTimeoutError as exc:
+            logger.warning("LLM timed out; keeping original text: {}", exc)
+            warnings.append(
+                "The AI provider timed out; the original text was kept. "
+                "Please try again shortly."
+            )
+            raw_output = guarded_text
+        except LLMError as exc:
+            logger.warning("LLM call failed; keeping original text: {}", exc)
+            warnings.append(
+                "The AI provider call failed; the original text was kept. "
+                "Please try again shortly."
+            )
+            raw_output = guarded_text
 
         # ── Step 5: Post-process ──────────────────────────────────────────────
         restored = guardian.restore(raw_output, placeholder_map)
