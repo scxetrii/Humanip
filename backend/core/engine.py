@@ -197,10 +197,17 @@ async def _complete_with_timeout(
 # ── Rewrite guard ─────────────────────────────────────────────────────────────
 
 _COPY_SIMILARITY_THRESHOLD = 0.97
+_MIN_REWRITE_LENGTH_RATIO = 0.55
 _REWRITE_RETRY_PREFIX = (
     "IMPORTANT: Your previous answer repeated the input almost word-for-word. "
     "That is a failure. Rewrite EVERY sentence now using different wording and "
     "sentence structure. Do not copy complete sentences from the input.\n\n"
+)
+_LENGTH_RETRY_PREFIX = (
+    "IMPORTANT: Your previous answer was far too short and omitted most of the "
+    "input. Do not summarise or shorten. Rewrite the ENTIRE text below, "
+    "sentence by sentence, keeping all details and approximately the same "
+    "length.\n\n"
 )
 
 
@@ -256,21 +263,42 @@ async def _complete_ensuring_rewrite(
         )
         result = resp.text
         similarity = _similarity(source_text, result)
-        if similarity < _COPY_SIMILARITY_THRESHOLD:
+        source_words = len(source_text.split())
+        result_words = len(result.split())
+        too_short = (
+            source_words >= 40
+            and result_words < max(20, int(source_words * _MIN_REWRITE_LENGTH_RATIO))
+        )
+        if similarity < _COPY_SIMILARITY_THRESHOLD and not too_short:
             return result
 
-        logger.warning(
-            "LLM returned near-identical text (similarity={:.3f}, attempt {}/{}); retrying",
-            similarity, attempt, max_attempts,
-        )
+        if too_short:
+            logger.warning(
+                "LLM output too short ({} words vs {} source words, "
+                "similarity={:.3f}, attempt {}/{}); retrying",
+                result_words, source_words, similarity, attempt, max_attempts,
+            )
+            retry_prefix = _LENGTH_RETRY_PREFIX
+        else:
+            logger.warning(
+                "LLM returned near-identical text (similarity={:.3f}, "
+                "attempt {}/{}); retrying",
+                similarity, attempt, max_attempts,
+            )
+            retry_prefix = _REWRITE_RETRY_PREFIX
+
         if attempt >= max_attempts:
             break
         if deadline is not None and deadline.remaining() < 5.0:
-            logger.warning("Time budget nearly exhausted; keeping current rewrite.")
+            logger.warning("Time budget nearly exhausted; using the last attempt.")
             break
-        prompt = _REWRITE_RETRY_PREFIX + user_prompt
+        prompt = retry_prefix + user_prompt
 
-    return result
+    raise LLMError(
+        f"[{provider.name}] LLM did not produce a complete rewrite "
+        f"({len(result.split())} output words vs "
+        f"{len(source_text.split())} input words)"
+    )
 
 
 # ── Large-document chunking ───────────────────────────────────────────────────

@@ -180,7 +180,9 @@ AI-generated text into natural, fluent, human-sounding prose.
 
 Your sole task is to REWRITE the user's text according to the given mode,
 intensity, and rules.  Return ONLY the rewritten text – no preamble, no
-explanation, no commentary, no markdown fences."""
+explanation, no commentary, no markdown fences.  Never summarise, shorten,
+or omit content: keep every fact and detail, and return approximately the
+same length as the input."""
 
 
 def build_system_prompt(
@@ -215,10 +217,11 @@ def build_user_prompt(
     issues_summary = _build_issues_summary(analysis)
 
     return "\n\n".join([
-        "Rewrite the text below so it reads like natural human writing. "
+        "Rewrite the entire text below so it reads like natural human writing. "
         "Do not return the input unchanged: rephrase sentences, vary the "
         "rhythm and word choice, and improve flow throughout. Copying the "
-        "original wording is not an acceptable result.",
+        "original wording is not an acceptable result. Do not summarise, "
+        "shorten, or omit content; keep approximately the same length.",
         issues_summary,
         preservation_block,
         "Placeholders such as ⟦CITE_0001⟧, ⟦TERM_0001⟧ and ⟦NUM_0001⟧ must "
