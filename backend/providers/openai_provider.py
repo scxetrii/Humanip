@@ -10,18 +10,39 @@ Supports:
 """
 from __future__ import annotations
 
+import re
+import time
+
 from loguru import logger
 
 from backend.providers.base import (
     BaseLLMProvider,
     LLMConfigError,
+    LLMQuotaError,
     ProviderRegistry,
+    _is_daily_quota_error,
     _status_code,
 )
 from config.settings import settings
 
 
 class OpenAIProvider(BaseLLMProvider):
+
+    _exhausted_until: dict[str, float] = {}
+
+    @staticmethod
+    def _quota_cooldown(exc: BaseException) -> float:
+        match = re.search(
+            r"retry in (?:(\d+)h)?(?:(\d+)m)?([\d.]+)s",
+            str(exc),
+            re.IGNORECASE,
+        )
+        if match:
+            hours = int(match.group(1) or 0)
+            minutes = int(match.group(2) or 0)
+            seconds = float(match.group(3) or 0)
+            return hours * 3600 + minutes * 60 + seconds + 60
+        return 3600.0
 
     @property
     def name(self) -> str:
@@ -69,6 +90,17 @@ class OpenAIProvider(BaseLLMProvider):
             if candidate and candidate not in models:
                 models.append(candidate)
 
+        now = time.monotonic()
+        models = [
+            model for model in models
+            if self._exhausted_until.get(model, 0.0) <= now
+        ]
+        if not models:
+            raise LLMQuotaError(
+                "All configured Gemini models have exhausted their daily "
+                "free-tier quota. Add billing or raise the quota, then retry."
+            )
+
         last_exc: Exception | None = None
         for index, model in enumerate(models):
             try:
@@ -84,12 +116,21 @@ class OpenAIProvider(BaseLLMProvider):
             except Exception as exc:
                 last_exc = exc
                 code = _status_code(exc)
+                daily_quota = _is_daily_quota_error(exc)
+                if daily_quota:
+                    cooldown = self._quota_cooldown(exc)
+                    self._exhausted_until[model] = time.monotonic() + cooldown
+                    logger.warning(
+                        "[OpenAI] model {} daily quota exhausted; "
+                        "skipping it for {:.0f}s",
+                        model, cooldown,
+                    )
                 retryable = (
                     code is None
                     or code in (404, 408, 409, 425, 429)
                     or code >= 500
                 )
-                if index < len(models) - 1 and retryable:
+                if index < len(models) - 1 and (retryable or daily_quota):
                     logger.warning(
                         "[OpenAI] model {} failed ({}); trying fallback chain: {}",
                         model,

@@ -534,8 +534,9 @@ async def _rewrite_in_chunks(
 
     rewritten_chunks: list[str] = []
     failures = 0
+    failed: dict[int, BaseException] = {}
 
-    for chunk, result in zip(chunks, results):
+    for index, (chunk, result) in enumerate(zip(chunks, results)):
         if isinstance(result, LLMConfigError):
             for task in tasks:
                 task.cancel()
@@ -543,6 +544,7 @@ async def _rewrite_in_chunks(
             raise result
         if isinstance(result, BaseException):
             failures += 1
+            failed[index] = result
             rewritten_chunks.append(chunk)
             continue
 
@@ -551,7 +553,58 @@ async def _rewrite_in_chunks(
             rewritten_chunks.append(value)
         else:
             failures += 1
+            failed[index] = value
             rewritten_chunks.append(chunk)
+
+    retry_indices = [
+        index for index, exc in failed.items()
+        if not isinstance(exc, RewriteQualityError)
+    ]
+    if (
+        retry_indices
+        and deadline is not None
+        and deadline.remaining() >= 12.0
+    ):
+        logger.info(
+            "Retrying {} failed chunks with the remaining time budget",
+            len(retry_indices),
+        )
+        await asyncio.sleep(2.0)
+        retry_sem = asyncio.Semaphore(2)
+
+        async def _retry_one(index: int):
+            async with retry_sem:
+                if deadline.remaining() < 8.0:
+                    return index, None
+                try:
+                    value = await _rewrite_chunk_with_split(
+                        provider, chunks[index], analysis, request,
+                        system_prompt, deadline,
+                    )
+                    return index, value
+                except LLMConfigError:
+                    raise
+                except LLMError as exc:
+                    logger.debug(
+                        "Retry for chunk {} failed ({}); keeping original",
+                        index, exc,
+                    )
+                    return index, None
+
+        retry_results = await asyncio.gather(
+            *(_retry_one(index) for index in retry_indices),
+            return_exceptions=True,
+        )
+        for result in retry_results:
+            if isinstance(result, LLMConfigError):
+                raise result
+            if isinstance(result, BaseException) or result is None:
+                continue
+            index, value = result
+            if value is None:
+                continue
+            rewritten_chunks[index] = value
+            failures -= 1
 
     if failures:
         if failures == len(chunks):

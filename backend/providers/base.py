@@ -56,6 +56,10 @@ class LLMConfigError(LLMError):
     """Raised when a provider is missing its API key or SDK. Never retried."""
 
 
+class LLMQuotaError(LLMError):
+    """Raised when every configured model has exhausted its daily quota."""
+
+
 class LLMTimeoutError(LLMError):
     """Raised when an LLM call exceeds the configured time budget."""
 
@@ -74,13 +78,23 @@ def _status_code(exc: BaseException) -> int | None:
     return None
 
 
+def _is_daily_quota_error(exc: BaseException) -> bool:
+    """True for a 429 caused by an exhausted daily/free-tier quota."""
+    if _status_code(exc) != 429:
+        return False
+    text = str(exc).lower()
+    return "per day" in text or "daily" in text
+
+
 def _is_retryable(exc: BaseException) -> bool:
     """
     Retry only transient failures (timeouts, connection errors, 429 and 5xx).
-    Authentication, configuration, bad-request and not-found errors fail fast
-    instead of wasting a request's time budget on calls that cannot succeed.
+    Authentication, configuration, bad-request, not-found, and exhausted daily
+    quotas fail fast instead of wasting a request's time budget.
     """
-    if isinstance(exc, (LLMConfigError, asyncio.CancelledError)):
+    if isinstance(exc, (LLMConfigError, LLMQuotaError, asyncio.CancelledError)):
+        return False
+    if _is_daily_quota_error(exc):
         return False
     if isinstance(exc, (asyncio.TimeoutError, TimeoutError, ConnectionError)):
         return True

@@ -86,7 +86,7 @@ class Settings(BaseSettings):
     chunk_threshold_words: int = 250   # above this, rewrite in chunks
     chunk_max_words: int = 300         # target words per chunk
     chunk_max_chars: int = 2500        # hard character cap per chunk
-    chunk_concurrency: int = 6         # parallel LLM calls per document
+    chunk_concurrency: int = 4         # parallel LLM calls per document
     chunk_timeout: int = 25            # seconds per chunk call (incl. fallbacks)
     diff_max_words: int = 3000         # skip word-level diff above this
 
