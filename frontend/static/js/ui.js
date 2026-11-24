@@ -1,0 +1,359 @@
+/**
+ * ui.js
+ * ──────
+ * Pure UI rendering functions — no business logic.
+ * All functions take data and mutate the DOM.
+ */
+
+// ── Toast notifications ───────────────────────────────────────────────────────
+
+const toastContainer = () => document.getElementById('toastContainer');
+
+function showToast(message, type = 'info', duration = 3500) {
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+
+  const icon = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' }[type] || 'ℹ';
+  toast.innerHTML = `<span>${icon}</span><span>${escHtml(message)}</span>`;
+
+  toastContainer().appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.3s';
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
+
+// ── Loading overlay ───────────────────────────────────────────────────────────
+
+function showLoading(label = 'Processing…', sub = '') {
+  document.getElementById('loadingLabel').textContent = label;
+  document.getElementById('loadingSub').textContent = sub;
+  document.getElementById('loadingOverlay').hidden = false;
+}
+
+function hideLoading() {
+  document.getElementById('loadingOverlay').hidden = true;
+}
+
+
+// ── Stats bar ─────────────────────────────────────────────────────────────────
+
+function updateInputStats(text) {
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const chars = text.length;
+  const sentences = (text.match(/[.!?]+/g) || []).length;
+
+  document.getElementById('inputWords').textContent = words.toLocaleString();
+  document.getElementById('inputChars').textContent = chars.toLocaleString();
+  document.getElementById('inputSentences').textContent = sentences.toLocaleString();
+}
+
+function updateOutputStats(response) {
+  const words = response.humanized_text.trim().split(/\s+/).length;
+  const chars = response.humanized_text.length;
+  const ms = response.processing_time_ms;
+  const time = ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+
+  document.getElementById('outputWords').textContent = words.toLocaleString();
+  document.getElementById('outputChars').textContent = chars.toLocaleString();
+  document.getElementById('processingTime').textContent = time;
+}
+
+
+// ── Output text ───────────────────────────────────────────────────────────────
+
+function renderOutput(text) {
+  const el = document.getElementById('outputText');
+  el.textContent = text;
+  el.hidden = false;
+  document.getElementById('outputEmpty').hidden = true;
+}
+
+function resetOutput() {
+  document.getElementById('outputText').hidden = true;
+  document.getElementById('outputEmpty').hidden = false;
+  document.getElementById('outputText').textContent = '';
+  document.getElementById('outputWords').textContent = '—';
+  document.getElementById('outputChars').textContent = '—';
+  document.getElementById('processingTime').textContent = '—';
+  document.getElementById('copyOutput').disabled = true;
+  document.getElementById('downloadBtn').disabled = true;
+  renderDiff([]);
+  renderQuality(null);
+  renderIssues([]);
+}
+
+
+// ── Diff rendering ────────────────────────────────────────────────────────────
+
+function renderDiff(segments) {
+  const container = document.getElementById('diffContent');
+  if (!segments || segments.length === 0) {
+    container.innerHTML = '<p class="hint-center">Run humanization first to see the word-level comparison.</p>';
+    return;
+  }
+
+  container.innerHTML = '';
+  segments.forEach(seg => {
+    const span = document.createElement('span');
+    span.textContent = seg.text;
+    if (seg.change_type === 'added') span.className = 'diff-added';
+    else if (seg.change_type === 'removed') span.className = 'diff-removed';
+    container.appendChild(span);
+  });
+}
+
+
+// ── Quality gauge & metrics ───────────────────────────────────────────────────
+
+const METRIC_LABELS = {
+  semantic_similarity:     'Meaning Preserved',
+  factual_preservation:    'Factual Accuracy',
+  grammar_quality:         'Grammar Quality',
+  readability_improvement: 'Readability Change',
+  repetition_reduction:    'Repetition Reduced',
+  citation_integrity:      'Citations Intact',
+  sentence_variation:      'Sentence Variety',
+  paragraph_coherence:     'Paragraph Flow',
+};
+
+const METRIC_COLORS = {
+  semantic_similarity:     '#3b5bdb',
+  factual_preservation:    '#12b76a',
+  grammar_quality:         '#3b5bdb',
+  readability_improvement: '#f79009',
+  repetition_reduction:    '#12b76a',
+  citation_integrity:      '#12b76a',
+  sentence_variation:      '#3b5bdb',
+  paragraph_coherence:     '#3b5bdb',
+};
+
+function renderQuality(quality) {
+  const emptyEl = document.getElementById('qualityEmpty');
+  const panelEl = document.getElementById('qualityPanel');
+
+  if (!quality) {
+    emptyEl.hidden = false;
+    panelEl.hidden = true;
+    return;
+  }
+
+  emptyEl.hidden = true;
+  panelEl.hidden = false;
+
+  // Gauge
+  const score = quality.overall_score;
+  document.getElementById('overallScore').textContent = Math.round(score);
+  const gaugeFill = document.getElementById('gaugeFill');
+  const totalLength = 157;
+  const offset = totalLength - (totalLength * score / 100);
+  gaugeFill.setAttribute('stroke-dashoffset', offset.toFixed(1));
+  gaugeFill.setAttribute('stroke', score >= 75 ? '#12b76a' : score >= 50 ? '#f79009' : '#f04438');
+
+  // Verdict
+  const verdict =
+    score >= 85 ? '✨ Excellent — natural, accurate, and well-written.' :
+    score >= 70 ? '✅ Good — solid humanization with minor rough edges.' :
+    score >= 55 ? '⚠️ Fair — some AI patterns may remain.' :
+    '❌ Poor — review factual content carefully.';
+  document.getElementById('qualityVerdict').textContent = verdict;
+
+  // Metric bars
+  const metricsEl = document.getElementById('qualityMetrics');
+  metricsEl.innerHTML = '';
+
+  for (const [key, label] of Object.entries(METRIC_LABELS)) {
+    let raw = quality[key] ?? 0;
+    // readability_improvement is signed (-0.5 to +0.5) → normalize
+    let pct;
+    if (key === 'readability_improvement') {
+      pct = Math.round((raw + 0.5) * 100);
+    } else {
+      pct = Math.round(raw * 100);
+    }
+    pct = Math.max(0, Math.min(100, pct));
+
+    const displayVal = key === 'readability_improvement'
+      ? (raw > 0 ? `+${(raw * 100).toFixed(0)}%` : `${(raw * 100).toFixed(0)}%`)
+      : `${pct}%`;
+
+    const color = METRIC_COLORS[key] || '#3b5bdb';
+
+    metricsEl.insertAdjacentHTML('beforeend', `
+      <div class="metric-row">
+        <div class="metric-header">
+          <span class="metric-label">${label}</span>
+          <span class="metric-value">${displayVal}</span>
+        </div>
+        <div class="metric-bar">
+          <div class="metric-fill" style="width:${pct}%;background:${color};"></div>
+        </div>
+      </div>
+    `);
+  }
+
+  // Warnings
+  const warningsEl = document.getElementById('qualityWarnings');
+  if (quality.warnings && quality.warnings.length > 0) {
+    warningsEl.hidden = false;
+    warningsEl.innerHTML = '<strong>⚠ Warnings:</strong><ul>' +
+      quality.warnings.map(w => `<li>${escHtml(w)}</li>`).join('') + '</ul>';
+  } else {
+    warningsEl.hidden = true;
+  }
+}
+
+
+// ── Issues panel ──────────────────────────────────────────────────────────────
+
+function renderIssues(analysis) {
+  const panel = document.getElementById('issuesPanel');
+
+  // Collect all issues from the analysis object
+  const issues = [];
+
+  if (analysis) {
+    const addIssues = (arr, type, severity) => {
+      (arr || []).forEach(item => {
+        const text = typeof item === 'string' ? item : item.phrase || JSON.stringify(item);
+        issues.push({ type, text, severity });
+      });
+    };
+
+    addIssues(analysis.excessive_transitions,     'Excessive Transition',     'medium');
+    addIssues(analysis.unnatural_phrases,          'Unnatural Phrase',         'high');
+    addIssues(analysis.generic_phrases,            'Generic AI Phrase',        'high');
+    addIssues(analysis.overly_formal_expressions,  'Overly Formal',            'medium');
+    addIssues(analysis.repetitive_openers,         'Repetitive Opener',        'medium');
+    addIssues(analysis.weak_connections,           'Weak Connection',          'low');
+    addIssues(analysis.redundant_explanations,     'Redundant Explanation',    'low');
+    (analysis.repetitive_structures || []).forEach(r => {
+      issues.push({
+        type: 'Repetitive Structure',
+        text: `"${r.phrase}" repeated ${r.count}× `,
+        severity: r.count >= 3 ? 'high' : 'medium',
+      });
+    });
+  }
+
+  if (issues.length === 0) {
+    panel.innerHTML = analysis
+      ? '<p class="hint-center">✅ No significant AI-writing issues detected.</p>'
+      : '<p class="hint-center">Run analysis or humanization to see detected writing issues.</p>';
+    return;
+  }
+
+  panel.innerHTML = issues.map(issue => `
+    <div class="issue-item severity-${issue.severity}">
+      <div class="issue-type">${escHtml(issue.type)}</div>
+      <div class="issue-desc">${escHtml(issue.text)}</div>
+    </div>
+  `).join('');
+}
+
+
+// ── Provider list (settings modal) ───────────────────────────────────────────
+
+function renderProviders(data, onSwitch) {
+  const list = document.getElementById('providerList');
+  list.innerHTML = '';
+
+  data.providers.forEach(p => {
+    const isActive = p.name === data.active_provider;
+    const statusLabel = p.is_configured ? 'Ready' : 'No API key';
+    const statusClass = p.is_configured ? 'ok' : 'unconfigured';
+
+    const item = document.createElement('div');
+    item.className = `provider-item ${isActive ? 'active' : ''}`;
+    item.innerHTML = `
+      <div class="provider-info">
+        <span class="provider-name">${escHtml(p.name)} ${p.is_local ? '🏠' : ''}</span>
+        <span class="provider-model">${escHtml(p.model)}</span>
+      </div>
+      <span class="provider-status ${statusClass}">${statusLabel}</span>
+    `;
+
+    if (p.is_configured && !isActive) {
+      item.addEventListener('click', () => onSwitch(p.name, item));
+    }
+
+    list.appendChild(item);
+  });
+}
+
+
+// ── History list (drawer) ─────────────────────────────────────────────────────
+
+function renderHistory(data, onSelect) {
+  const listEl = document.getElementById('historyList');
+  listEl.innerHTML = '';
+
+  if (!data.items || data.items.length === 0) {
+    listEl.innerHTML = '<p class="hint-center">No history yet.</p>';
+    return;
+  }
+
+  data.items.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'history-item';
+    const date = new Date(item.created_at).toLocaleString();
+    div.innerHTML = `
+      <div class="history-snippet">${escHtml(item.original_snippet || '(no preview)')}</div>
+      <div class="history-meta">
+        <span class="history-badge">${escHtml(item.mode)}</span>
+        <span class="history-badge">${Math.round(item.overall_score || 0)}/100</span>
+        <span>${date}</span>
+      </div>
+    `;
+    div.addEventListener('click', () => onSelect(item.id));
+    listEl.appendChild(div);
+  });
+}
+
+
+// ── AI-pattern score badge ────────────────────────────────────────────────────
+
+function updateAiScore(analysis) {
+  const badge = document.getElementById('analysisBadge');
+  const score = document.getElementById('aiScore');
+
+  if (!analysis) {
+    badge.hidden = true;
+    return;
+  }
+
+  badge.hidden = false;
+  const pct = Math.round((analysis.ai_pattern_score || 0) * 100);
+  score.textContent = `${pct}%`;
+  score.style.color = pct >= 60 ? '#f04438' : pct >= 30 ? '#f79009' : '#12b76a';
+}
+
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+
+function activateTab(tabId) {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabId);
+  });
+  document.querySelectorAll('.tab-content').forEach(content => {
+    content.classList.toggle('active', content.id === `tab-${tabId}`);
+  });
+}
+
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function countWords(text) {
+  return text.trim() ? text.trim().split(/\s+/).length : 0;
+}

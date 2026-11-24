@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Text Humanizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="static/css/main.css" />
+</head>
+<body>
+
+<!-- ─── App Shell ─────────────────────────────────────────────────────────── -->
+<div id="app">
+
+  <!-- HEADER -->
+  <header class="app-header">
+    <div class="header-brand">
+      <svg class="brand-icon" viewBox="0 0 32 32" fill="none">
+        <rect width="32" height="32" rx="8" fill="var(--accent)"/>
+        <path d="M8 20 C8 20 12 10 16 16 C20 22 24 12 24 12" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="brand-name">Humanizer</span>
+      <span class="brand-tag">AI Text → Natural Prose</span>
+    </div>
+    <div class="header-controls">
+      <div class="provider-badge" id="providerBadge">
+        <span class="provider-dot"></span>
+        <span id="providerName">Loading…</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="settingsToggle" title="Settings">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M10 13a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" stroke-width="1.5"/><path d="M17.5 10a7.5 7.5 0 11-15 0 7.5 7.5 0 0115 0z" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 2"/></svg>
+        Settings
+      </button>
+      <button class="btn btn-ghost btn-sm" id="historyToggle" title="History">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M10 6v4l3 3M2.5 10a7.5 7.5 0 1015 0 7.5 7.5 0 00-15 0z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        History
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="workspace">
+
+    <!-- LEFT: Input panel -->
+    <section class="panel panel-left" id="panelLeft">
+      <div class="panel-header">
+        <h2 class="panel-title">Input Text</h2>
+        <div class="panel-actions">
+          <label class="btn btn-ghost btn-xs" title="Upload TXT, DOCX, or PDF">
+            <svg viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 5l3-3 3 3M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Upload
+            <input type="file" id="fileInput" accept=".txt,.docx,.pdf" hidden />
+          </label>
+          <button class="btn btn-ghost btn-xs" id="clearInput" title="Clear">
+            <svg viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <div class="editor-wrapper">
+        <textarea
+          id="inputText"
+          class="editor"
+          placeholder="Paste your AI-generated text here, or upload a file above…&#10;&#10;The humanizer will detect and fix robotic patterns, clichés, repetitive structures, and unnatural transitions — while preserving all facts, citations, and technical terms."
+          spellcheck="false"
+        ></textarea>
+        <div class="editor-overlay" id="uploadOverlay" hidden>
+          <div class="upload-drop-area">
+            <svg viewBox="0 0 48 48" fill="none"><path d="M24 8v24M15 17l9-9 9 9M8 36v4h32v-4" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <p>Drop a TXT, DOCX, or PDF here</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-footer">
+        <div class="text-stats" id="inputStats">
+          <span class="stat-item"><span id="inputWords">0</span> words</span>
+          <span class="stat-sep">·</span>
+          <span class="stat-item"><span id="inputChars">0</span> chars</span>
+          <span class="stat-sep">·</span>
+          <span class="stat-item"><span id="inputSentences">0</span> sentences</span>
+        </div>
+        <div class="analysis-badge" id="analysisBadge" hidden>
+          <span class="ai-score-label">AI-pattern score:</span>
+          <span class="ai-score-value" id="aiScore">—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- CENTRE: Controls + Humanize button -->
+    <section class="controls-column">
+      <div class="controls-card">
+
+        <!-- Writing Mode -->
+        <div class="control-group">
+          <label class="control-label">Writing Mode</label>
+          <div class="mode-grid">
+            <button class="mode-btn active" data-mode="natural">
+              <span class="mode-icon">✍️</span>
+              <span class="mode-name">Natural</span>
+            </button>
+            <button class="mode-btn" data-mode="academic">
+              <span class="mode-icon">🎓</span>
+              <span class="mode-name">Academic</span>
+            </button>
+            <button class="mode-btn" data-mode="professional">
+              <span class="mode-icon">💼</span>
+              <span class="mode-name">Professional</span>
+            </button>
+            <button class="mode-btn" data-mode="simple">
+              <span class="mode-icon">📖</span>
+              <span class="mode-name">Simple</span>
+            </button>
+            <button class="mode-btn" data-mode="research">
+              <span class="mode-icon">🔬</span>
+              <span class="mode-name">Research</span>
+            </button>
+            <button class="mode-btn" data-mode="conversational">
+              <span class="mode-icon">💬</span>
+              <span class="mode-name">Conversational</span>
+            </button>
+            <button class="mode-btn" data-mode="personal">
+              <span class="mode-icon">🌱</span>
+              <span class="mode-name">Personal</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Intensity -->
+        <div class="control-group">
+          <label class="control-label">Intensity</label>
+          <div class="intensity-track">
+            <button class="intensity-btn" data-intensity="light">Light</button>
+            <button class="intensity-btn active" data-intensity="balanced">Balanced</button>
+            <button class="intensity-btn" data-intensity="strong">Strong</button>
+          </div>
+          <p class="control-hint" id="intensityHint">Moderate rewrite — fixes AI patterns while keeping structure.</p>
+        </div>
+
+        <!-- Granularity -->
+        <div class="control-group">
+          <label class="control-label">Rewrite Scope</label>
+          <select id="granularity" class="select">
+            <option value="document">Full Document</option>
+            <option value="paragraph">Paragraph by Paragraph</option>
+            <option value="sentence">Sentence by Sentence</option>
+          </select>
+        </div>
+
+        <!-- Preservation Toggles -->
+        <div class="control-group">
+          <label class="control-label">Preserve</label>
+          <div class="toggles">
+            <label class="toggle-item">
+              <input type="checkbox" id="toggleCitations" checked />
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-label">Citations & References</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="toggleTerms" checked />
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-label">Technical Terms</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="toggleVoice" />
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-label">Original Voice</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- English Variant -->
+        <div class="control-group">
+          <label class="control-label">English Variant</label>
+          <div class="variant-row">
+            <button class="variant-btn active" data-variant="american">🇺🇸 American</button>
+            <button class="variant-btn" data-variant="british">🇬🇧 British</button>
+          </div>
+        </div>
+
+        <!-- Humanize button -->
+        <button class="btn btn-primary btn-humanize" id="humanizeBtn" disabled>
+          <span class="btn-label">Humanize Text</span>
+          <span class="btn-spinner hidden"></span>
+        </button>
+
+        <!-- Analyse only -->
+        <button class="btn btn-ghost btn-sm btn-full" id="analyzeBtn">
+          Analyse Only (no rewrite)
+        </button>
+
+        <!-- Undo / Redo -->
+        <div class="undo-row">
+          <button class="btn btn-ghost btn-xs" id="undoBtn" disabled title="Undo">
+            ↩ Undo
+          </button>
+          <button class="btn btn-ghost btn-xs" id="redoBtn" disabled title="Redo">
+            ↪ Redo
+          </button>
+        </div>
+
+      </div><!-- /controls-card -->
+    </section>
+
+    <!-- RIGHT: Output panel -->
+    <section class="panel panel-right" id="panelRight">
+      <div class="panel-header">
+        <div class="output-tabs">
+          <button class="tab-btn active" data-tab="output">Output</button>
+          <button class="tab-btn" data-tab="diff">Comparison</button>
+          <button class="tab-btn" data-tab="quality">Quality</button>
+          <button class="tab-btn" data-tab="issues">Issues</button>
+        </div>
+        <div class="panel-actions">
+          <button class="btn btn-ghost btn-xs" id="copyOutput" title="Copy to clipboard" disabled>
+            <svg viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="9" height="9" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V3a1 1 0 00-1-1H3a1 1 0 00-1 1v7a1 1 0 001 1h2" stroke="currentColor" stroke-width="1.5"/></svg>
+            Copy
+          </button>
+          <button class="btn btn-ghost btn-xs dropdown-trigger" id="downloadBtn" title="Download" disabled>
+            <svg viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Download ▾
+          </button>
+          <div class="dropdown-menu" id="downloadMenu" hidden>
+            <button class="dropdown-item" id="downloadTxt">Plain Text (.txt)</button>
+            <button class="dropdown-item" id="downloadDocx">Word Document (.docx)</button>
+          </div>
+          <button class="btn btn-ghost btn-xs" id="resetOutput" title="Reset">Reset</button>
+        </div>
+      </div>
+
+      <!-- Tab: Output -->
+      <div class="tab-content active" id="tab-output">
+        <div class="output-empty" id="outputEmpty">
+          <svg viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="var(--border)" stroke-width="2"/><path d="M22 32l6 6 14-14" stroke="var(--border)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <p>Your humanized text will appear here.</p>
+          <p class="hint">Paste text on the left and click <strong>Humanize Text</strong>.</p>
+        </div>
+        <div class="output-text" id="outputText" hidden></div>
+      </div>
+
+      <!-- Tab: Diff/Comparison -->
+      <div class="tab-content" id="tab-diff">
+        <div class="diff-legend">
+          <span class="diff-key added">Added</span>
+          <span class="diff-key removed">Removed</span>
+          <span class="diff-key equal">Unchanged</span>
+        </div>
+        <div class="diff-content" id="diffContent">
+          <p class="hint-center">Run humanization first to see the word-level comparison.</p>
+        </div>
+      </div>
+
+      <!-- Tab: Quality -->
+      <div class="tab-content" id="tab-quality">
+        <div class="quality-empty" id="qualityEmpty">
+          <p class="hint-center">Quality scores will appear after humanization.</p>
+        </div>
+        <div class="quality-panel" id="qualityPanel" hidden>
+          <div class="quality-overall">
+            <div class="quality-gauge" id="qualityGauge">
+              <svg viewBox="0 0 120 60" class="gauge-svg">
+                <path d="M10 50 A 50 50 0 0 1 110 50" fill="none" stroke="var(--border)" stroke-width="12" stroke-linecap="round"/>
+                <path id="gaugeFill" d="M10 50 A 50 50 0 0 1 110 50" fill="none" stroke="var(--accent)" stroke-width="12" stroke-linecap="round" stroke-dasharray="157" stroke-dashoffset="157"/>
+              </svg>
+              <div class="gauge-label">
+                <span class="gauge-score" id="overallScore">—</span>
+                <span class="gauge-unit">/100</span>
+              </div>
+            </div>
+            <p class="quality-verdict" id="qualityVerdict">—</p>
+          </div>
+          <div class="quality-metrics" id="qualityMetrics"></div>
+          <div class="quality-warnings" id="qualityWarnings" hidden></div>
+        </div>
+      </div>
+
+      <!-- Tab: Issues -->
+      <div class="tab-content" id="tab-issues">
+        <div class="issues-panel" id="issuesPanel">
+          <p class="hint-center">Run analysis or humanization to see detected writing issues.</p>
+        </div>
+      </div>
+
+      <div class="panel-footer">
+        <div class="text-stats" id="outputStats">
+          <span class="stat-item"><span id="outputWords">—</span> words</span>
+          <span class="stat-sep">·</span>
+          <span class="stat-item"><span id="outputChars">—</span> chars</span>
+          <span class="stat-sep">·</span>
+          <span class="stat-item"><span id="processingTime">—</span></span>
+        </div>
+      </div>
+    </section>
+
+  </main><!-- /workspace -->
+
+</div><!-- /app -->
+
+<!-- ─── Settings Modal ──────────────────────────────────────────────────────── -->
+<div class="modal-backdrop" id="settingsModal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Settings</h3>
+      <button class="modal-close" id="settingsClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="setting-section">
+        <h4>LLM Provider</h4>
+        <div id="providerList" class="provider-list">Loading providers…</div>
+      </div>
+      <div class="setting-section">
+        <h4>API Keys</h4>
+        <p class="setting-note">API keys are configured in your <code>.env</code> file on the server — they are never sent to the browser.</p>
+        <a href="/docs" target="_blank" class="link">Open API Documentation ↗</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── History Drawer ─────────────────────────────────────────────────────── -->
+<div class="drawer-backdrop" id="historyDrawer" hidden>
+  <aside class="drawer">
+    <div class="drawer-header">
+      <h3>History</h3>
+      <div class="drawer-header-actions">
+        <button class="btn btn-ghost btn-xs" id="clearHistory">Clear All</button>
+        <button class="drawer-close" id="historyClose">✕</button>
+      </div>
+    </div>
+    <div class="drawer-body" id="historyList">
+      <p class="hint-center">No history yet.</p>
+    </div>
+  </aside>
+</div>
+
+<!-- ─── Toast Notifications ───────────────────────────────────────────────── -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ─── Loading Overlay ───────────────────────────────────────────────────── -->
+<div class="loading-overlay" id="loadingOverlay" hidden>
+  <div class="loading-card">
+    <div class="loading-spinner"></div>
+    <p class="loading-label" id="loadingLabel">Humanizing text…</p>
+    <p class="loading-sub" id="loadingSub">This usually takes 5–15 seconds.</p>
+  </div>
+</div>
+
+<script src="static/js/api.js"></script>
+<script src="static/js/ui.js"></script>
+<script src="static/js/app.js"></script>
+</body>
+</html>
