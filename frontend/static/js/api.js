@@ -8,6 +8,7 @@
  */
 
 const API_BASE = `${window.location.protocol}//${window.location.host}/api/v1`;
+const API_TIMEOUT_MS = 150000;
 
 // ── Generic fetch helper ──────────────────────────────────────────────────────
 
@@ -21,7 +22,21 @@ async function apiFetch(path, options = {}) {
     merged.body = JSON.stringify(merged.body);
   }
 
-  const resp = await fetch(url, merged);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  merged.signal = controller.signal;
+
+  let resp;
+  try {
+    resp = await fetch(url, merged);
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Request timed out — the LLM provider took too long. Please try again.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!resp.ok) {
     let detail = `HTTP ${resp.status}`;

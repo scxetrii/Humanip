@@ -75,8 +75,9 @@ class Settings(BaseSettings):
     # ── LLM Parameters ────────────────────────────────────────────────────────
     llm_temperature: float = 0.7
     llm_max_tokens: int = 4096
-    llm_timeout: int = 120           # seconds
-    llm_max_retries: int = 3
+    llm_timeout: int = 60            # seconds per attempt
+    llm_max_retries: int = 2         # attempts before giving up
+    llm_total_timeout: int = 90      # hard cap for the whole LLM call
 
     # ── NLP ───────────────────────────────────────────────────────────────────
     spacy_model: str = "en_core_web_sm"   # or en_core_web_md / lg
@@ -97,6 +98,8 @@ class Settings(BaseSettings):
     # ── Quality Engine ────────────────────────────────────────────────────────
     similarity_threshold: float = 0.75  # minimum acceptable semantic similarity
     semantic_model: str = "all-MiniLM-L6-v2"
+    enable_grammar_check: bool = False  # LanguageTool download/startup is slow
+    quality_timeout: int = 20           # seconds before falling back to heuristics
 
     # ── Security ─────────────────────────────────────────────────────────────
     secret_key: str = Field(

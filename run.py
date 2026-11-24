@@ -36,13 +36,13 @@ def main(host, port, reload, workers):
     _workers = workers or settings.api_workers
     _reload  = reload  or settings.api_reload
 
-    click.echo(f"\n{'═'*55}")
+    click.echo("\n" + "=" * 55)
     click.echo(f"  {settings.app_name} v{settings.app_version}")
     click.echo(f"  Listening on  http://{_host}:{_port}")
     click.echo(f"  API docs      http://{_host}:{_port}/docs")
     click.echo(f"  Provider:     {settings.llm_provider}")
     click.echo(f"  NLP model:    {settings.spacy_model}")
-    click.echo(f"{'═'*55}\n")
+    click.echo("=" * 55 + "\n")
 
     uvicorn.run(
         "backend.main:app",

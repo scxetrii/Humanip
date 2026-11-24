@@ -105,6 +105,7 @@ class TextAnalysis(BaseModel):
     avg_sentence_length: float
     readability_score: float        # Flesch Reading Ease
     readability_grade: str          # Flesch-Kincaid Grade level label
+    ai_pattern_score: float = 0.0   # 0–1; higher = more AI-like
 
     # Issues found
     repetitive_structures: list[RepetitionIssue]
@@ -160,6 +161,7 @@ class HumanizeResponse(BaseModel):
     analysis: TextAnalysis
     quality: QualityMetrics
     diff: list[DiffSegment]
+    human_score: float | None = None   # 0–100; how human the output reads
 
     # Metadata
     provider_used: str

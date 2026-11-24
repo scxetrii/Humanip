@@ -162,6 +162,13 @@ def _build_issues_summary(analysis: TextAnalysis) -> str:
     if analysis.weak_connections:
         lines.append(f"• Weak inter-sentence connections – improve flow.")
 
+    if len(lines) == 1:
+        lines.append(
+            "• No specific problems were auto-detected, but the text still "
+            "reads like machine-generated prose. Rewrite it fully so it sounds "
+            "naturally human."
+        )
+
     return "\n".join(lines)
 
 
@@ -208,8 +215,14 @@ def build_user_prompt(
     issues_summary = _build_issues_summary(analysis)
 
     return "\n\n".join([
+        "Rewrite the text below so it reads like natural human writing. "
+        "Do not return the input unchanged: rephrase sentences, vary the "
+        "rhythm and word choice, and improve flow throughout. Copying the "
+        "original wording is not an acceptable result.",
         issues_summary,
         preservation_block,
+        "Placeholders such as ⟦CITE_0001⟧, ⟦TERM_0001⟧ and ⟦NUM_0001⟧ must "
+        "be kept exactly as written – they are restored automatically.",
         "TEXT TO REWRITE (between the markers):",
         "<<<BEGIN>>>",
         text.strip(),

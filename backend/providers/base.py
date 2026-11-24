@@ -133,7 +133,7 @@ class BaseLLMProvider(abc.ABC):
 
     @retry(
         reraise=True,
-        stop=stop_after_attempt(3),
+        stop=stop_after_attempt(settings.llm_max_retries),
         wait=wait_exponential(multiplier=1, min=2, max=20),
         retry=retry_if_exception_type(Exception),
     )

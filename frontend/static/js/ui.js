@@ -62,6 +62,24 @@ function updateOutputStats(response) {
 }
 
 
+// ── Human-likeness meter ──────────────────────────────────────────────────────
+
+function renderHumanMeter(score) {
+  const meter = document.getElementById('humanMeter');
+  if (score === null || score === undefined || Number.isNaN(Number(score))) {
+    meter.hidden = true;
+    return;
+  }
+
+  const pct = Math.max(0, Math.min(100, Math.round(Number(score))));
+  const fill = document.getElementById('humanMeterFill');
+  meter.hidden = false;
+  fill.style.width = `${pct}%`;
+  fill.style.background = pct >= 75 ? '#12b76a' : pct >= 50 ? '#f79009' : '#f04438';
+  document.getElementById('humanMeterValue').textContent = `${pct}%`;
+}
+
+
 // ── Output text ───────────────────────────────────────────────────────────────
 
 function renderOutput(text) {
@@ -80,6 +98,7 @@ function resetOutput() {
   document.getElementById('processingTime').textContent = '—';
   document.getElementById('copyOutput').disabled = true;
   document.getElementById('downloadBtn').disabled = true;
+  renderHumanMeter(null);
   renderDiff([]);
   renderQuality(null);
   renderIssues([]);

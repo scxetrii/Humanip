@@ -94,21 +94,31 @@ def _factual_preservation(original: str, rewritten: str) -> float:
     return preserved / len(orig_nums)
 
 
-def _grammar_quality(text: str) -> float:
+def _grammar_heuristic(text: str) -> float:
+    word_count = len(text.split())
+    if word_count == 0:
+        return 1.0
+    # Heuristic: count sentence fragments and double spaces
+    fragments = text.count("  ") + text.count(" ,") + text.count(" .")
+    error_rate = min(fragments / word_count, 0.3)
+    return 1.0 - error_rate
+
+
+def _grammar_quality(text: str, enabled: bool = True) -> float:
     """Return 1.0 if perfect, lower for more errors per word."""
+    if not enabled:
+        return _grammar_heuristic(text)
+
     tool = _get_grammar_tool()
     word_count = len(text.split())
     if word_count == 0:
         return 1.0
 
     if tool is None:
-        # Heuristic: count sentence fragments and double spaces
-        fragments = text.count("  ") + text.count(" ,") + text.count(" .")
-        error_rate = min(fragments / word_count, 0.3)
-        return 1.0 - error_rate
+        return _grammar_heuristic(text)
 
     try:
-        matches = tool.check(text[:5000])
+        matches = tool.check(text[:2000])
         # Ignore stylistic suggestions – only count genuine grammar errors
         hard_errors = [
             m for m in matches
@@ -235,12 +245,16 @@ class QualityEvaluator:
         original: str,
         rewritten: str,
         analysis: TextAnalysis,
+        skip_grammar: bool = False,
     ) -> QualityMetrics:
         logger.debug("Running quality evaluation …")
 
         sem_sim    = _semantic_similarity(original, rewritten)
         factual    = _factual_preservation(original, rewritten)
-        grammar    = _grammar_quality(rewritten)
+        grammar    = _grammar_quality(
+            rewritten,
+            enabled=settings.enable_grammar_check and not skip_grammar,
+        )
         readab     = _readability_improvement(original, rewritten)
         rep_red    = _repetition_reduction(original, rewritten)
         cite_int   = _citation_integrity(original, rewritten, analysis)

@@ -23,6 +23,7 @@ For PARAGRAPH granularity the engine rewrites each paragraph individually.
 from __future__ import annotations
 
 import asyncio
+import difflib
 import re
 import time
 import uuid
@@ -48,7 +49,7 @@ from backend.core.schemas import (
     WritingMode,
 )
 from backend.preservation.guardian import PreservationGuardian
-from backend.providers.base import ProviderRegistry
+from backend.providers.base import LLMError, ProviderRegistry
 from backend.quality.evaluator import QualityEvaluator
 from config.settings import settings
 
@@ -146,6 +147,69 @@ def _build_diff(original: str, rewritten: str) -> list[DiffSegment]:
     return segments
 
 
+# ── LLM call with hard timeout ────────────────────────────────────────────────
+
+async def _complete_with_timeout(
+    provider,
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int | None = None,
+):
+    try:
+        return await asyncio.wait_for(
+            provider.complete(system_prompt, user_prompt, max_tokens=max_tokens),
+            timeout=settings.llm_total_timeout,
+        )
+    except asyncio.TimeoutError as exc:
+        raise LLMError(
+            f"[{provider.name}] LLM request timed out after "
+            f"{settings.llm_total_timeout}s"
+        ) from exc
+
+
+# ── Rewrite guard ─────────────────────────────────────────────────────────────
+
+_COPY_SIMILARITY_THRESHOLD = 0.97
+_REWRITE_RETRY_PREFIX = (
+    "IMPORTANT: Your previous answer repeated the input almost word-for-word. "
+    "That is a failure. Rewrite EVERY sentence now using different wording and "
+    "sentence structure. Do not copy complete sentences from the input.\n\n"
+)
+
+
+def _similarity(a: str, b: str) -> float:
+    return difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()
+
+
+async def _complete_ensuring_rewrite(
+    provider,
+    system_prompt: str,
+    user_prompt: str,
+    source_text: str,
+    max_tokens: int | None = None,
+    max_attempts: int = 3,
+) -> str:
+    """Call the LLM, retrying when it echoes the input instead of rewriting it."""
+    prompt = user_prompt
+    result = ""
+
+    for attempt in range(1, max_attempts + 1):
+        resp = await _complete_with_timeout(
+            provider, system_prompt, prompt, max_tokens=max_tokens
+        )
+        result = resp.text
+        similarity = _similarity(source_text, result)
+        if similarity < _COPY_SIMILARITY_THRESHOLD:
+            return result
+        logger.warning(
+            "LLM returned near-identical text (similarity={:.3f}, attempt {}/{}); retrying",
+            similarity, attempt, max_attempts,
+        )
+        prompt = _REWRITE_RETRY_PREFIX + user_prompt
+
+    return result
+
+
 # ── Sentence-level rewriting ──────────────────────────────────────────────────
 
 async def _rewrite_by_sentence(
@@ -170,8 +234,10 @@ async def _rewrite_by_sentence(
                 sentences[idx], ctx_before, ctx_after,
                 request.mode, request.intensity
             )
-            resp = await provider.complete(system_prompt, user_prompt, max_tokens=512)
-            return resp.text
+            return await _complete_ensuring_rewrite(
+                provider, system_prompt, user_prompt,
+                sentences[idx], max_tokens=512,
+            )
 
     tasks   = [_do_one(i) for i in range(len(sentences))]
     results = await asyncio.gather(*tasks)
@@ -197,8 +263,17 @@ async def _rewrite_by_paragraph(
             request.preserve_citations,
             request.preserve_technical_terms,
         )
-        resp = await provider.complete(system_prompt, user_prompt)
-        rewritten.append(resp.text)
+        result = await _complete_ensuring_rewrite(
+            provider, system_prompt, user_prompt, para
+        )
+        if _similarity(para, result) >= _COPY_SIMILARITY_THRESHOLD:
+            logger.warning(
+                "Paragraph still copied after retries; using sentence-level rewrite."
+            )
+            result = await _rewrite_by_sentence(
+                para, analysis, request, system_prompt
+            )
+        rewritten.append(result)
 
     return "\n\n".join(rewritten)
 
@@ -253,16 +328,42 @@ class HumanizationEngine:
                 request.preserve_citations,
                 request.preserve_technical_terms,
             )
-            llm_resp   = await provider.complete(system_prompt, user_prompt)
-            raw_output = llm_resp.text
+            raw_output = await _complete_ensuring_rewrite(
+                provider, system_prompt, user_prompt, guarded_text
+            )
+            if _similarity(guarded_text, raw_output) >= _COPY_SIMILARITY_THRESHOLD:
+                logger.warning(
+                    "Document-level output still copied after retries; "
+                    "falling back to paragraph-by-paragraph rewrite."
+                )
+                raw_output = await _rewrite_by_paragraph(
+                    guarded_text, analysis, request, system_prompt
+                )
 
         # ── Step 5: Post-process ──────────────────────────────────────────────
         restored = guardian.restore(raw_output, placeholder_map)
         final    = _apply_spelling_variant(restored, request.english_variant.value)
 
-        # ── Step 6: Quality evaluation ────────────────────────────────────────
+        # ── Step 6: Human-likeness of the rewritten text ──────────────────────
+        output_analysis = analyzer.analyze(final)
+        human_score = round((1.0 - output_analysis.ai_pattern_score) * 100, 1)
+
+        # ── Step 7: Quality evaluation ────────────────────────────────────────
         quality_engine = _get_quality()
-        quality        = quality_engine.evaluate(request.text, final, analysis)
+        try:
+            quality = await asyncio.wait_for(
+                asyncio.to_thread(
+                    quality_engine.evaluate, request.text, final, analysis
+                ),
+                timeout=settings.quality_timeout,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Quality evaluation timed out; using heuristic scores.")
+            quality = await asyncio.to_thread(
+                quality_engine.evaluate,
+                request.text, final, analysis,
+                skip_grammar=True,
+            )
 
         # ── Step 7: Build diff ────────────────────────────────────────────────
         diff = _build_diff(request.text, final)
@@ -279,6 +380,7 @@ class HumanizationEngine:
             analysis=analysis,
             quality=quality,
             diff=diff,
+            human_score=human_score,
             provider_used=active_provider.name,
             model_used=active_provider.model,
             processing_time_ms=elapsed_ms,

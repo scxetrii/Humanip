@@ -243,7 +243,8 @@ async function runHumanize() {
     // Render output
     renderOutput(response.humanized_text);
     updateOutputStats(response);
-    updateAiScore({ ai_pattern_score: 0 });  // post-humanize — score implied lower
+    updateAiScore(response.analysis);
+    renderHumanMeter(response.human_score);
 
     // Render diff
     renderDiff(response.diff);
@@ -331,6 +332,7 @@ function doUndo() {
   if (currentOutput) {
     state.currentOutput = currentOutput;
     renderOutput(currentOutput.humanized_text);
+    renderHumanMeter(currentOutput.human_score);
     renderDiff(currentOutput.diff);
     renderQuality(currentOutput.quality);
   } else {
@@ -354,6 +356,7 @@ function doRedo() {
   if (currentOutput) {
     state.currentOutput = currentOutput;
     renderOutput(currentOutput.humanized_text);
+    renderHumanMeter(currentOutput.human_score);
     renderDiff(currentOutput.diff);
     renderQuality(currentOutput.quality);
   }
@@ -467,6 +470,7 @@ function setupModals() {
           // Reconstruct a minimal response to display
           if (item.humanized_text) {
             renderOutput(item.humanized_text);
+            renderHumanMeter(null);
             document.getElementById('copyOutput').disabled = false;
             document.getElementById('downloadBtn').disabled = false;
           }

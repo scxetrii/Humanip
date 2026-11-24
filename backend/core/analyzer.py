@@ -121,8 +121,14 @@ GENERIC_INTRO_PHRASES = {
 # ── Citation Patterns ────────────────────────────────────────────────────────
 
 CITATION_PATTERNS = [
+    # Any parenthetical citation with a year or "n.d.":
+    # (Smith, 2020), (Tata Group, n.d.), (BBC News, 2008; Sorabjee, 2024)
+    re.compile(
+        r'\([^()]{0,300}?(?:\b(?:1[5-9]|20)\d{2}[a-z]?\b|\bn\.d\.)[^()]{0,200}?\)',
+        re.IGNORECASE,
+    ),
     # APA in-text: (Author, Year) or (Author & Author, Year)
-    re.compile(r'\([A-Z][a-z]+(?:\s*&\s*[A-Z][a-z]+)?(?:\s*et\s*al\.?)?,\s*\d{4}(?:,\s*pp?\.\s*[\d–-]+)?\)'),
+    re.compile(r'\([A-Z][a-z]+(?:\s*&\s*[A-Z][a-z]+)?(?:\s*et\s*al\.?)?,\s*\d{4}(?:,\s*pp?\.\s*[\d-]+)?\)'),
     # MLA in-text: (Author page)
     re.compile(r'\([A-Z][a-z]+\s+\d+\)'),
     # Numbered footnotes / endnotes: [1], [23]
@@ -263,6 +269,43 @@ def _detect_redundant_explanations(sentences: list[str]) -> list[str]:
     return redundant[:5]
 
 
+def _ai_pattern_score(
+    sentences: list[str],
+    rep_structures: list,
+    exc_transitions: list[str],
+    unnatural: list[str],
+    formal_expr: list[str],
+    robotic_openers: list[str],
+    generic: list[str],
+    weak_connections: list[str],
+    redundant: list[str],
+) -> float:
+    """Heuristic 0–1 score: higher means the text reads more AI-generated."""
+    weighted_issues = (
+        len(rep_structures) * 2.0
+        + len(exc_transitions) * 1.0
+        + len(unnatural) * 1.5
+        + len(formal_expr) * 0.75
+        + len(robotic_openers) * 1.5
+        + len(generic) * 1.5
+        + len(weak_connections) * 0.5
+        + len(redundant) * 0.75
+    )
+    density = weighted_issues / max(len(sentences), 1)
+    issue_component = min(density / 1.5, 1.0)
+
+    lengths = [len(s.split()) for s in sentences if s.split()]
+    if len(lengths) > 1:
+        mean = sum(lengths) / len(lengths)
+        variance = sum((n - mean) ** 2 for n in lengths) / len(lengths)
+        cv = (variance ** 0.5) / mean if mean else 0.0
+        uniformity = max(0.0, 1.0 - cv / 0.7)
+    else:
+        uniformity = 0.5
+
+    return round(min(1.0, 0.75 * issue_component + 0.25 * uniformity), 3)
+
+
 def _extract_technical_terms(doc: spacy.tokens.Doc) -> list[str]:
     """Extract noun chunks that are likely technical terms."""
     terms: list[str] = []
@@ -273,7 +316,15 @@ def _extract_technical_terms(doc: spacy.tokens.Doc) -> list[str]:
             terms.append(chunk.text)
     # Also grab standalone abbreviations: 2+ capital letters
     terms += re.findall(r'\b[A-Z]{2,}\b', doc.text)
-    return list(dict.fromkeys(terms))[:50]
+    cleaned: list[str] = []
+    for term in dict.fromkeys(terms):
+        stripped = term.strip()
+        if len(stripped) < 2 or not re.search(r'\w', stripped):
+            continue
+        if stripped.islower():
+            continue
+        cleaned.append(term)
+    return cleaned[:50]
 
 
 def _named_entities(doc: spacy.tokens.Doc) -> list[str]:
@@ -341,6 +392,11 @@ class TextAnalyzer:
         named_ents   = _named_entities(doc)
         numerics     = _extract_numerical_values(text)
 
+        ai_pattern_score = _ai_pattern_score(
+            sentences, rep_structures, exc_transitions, unnatural,
+            formal_expr, robotic_openers, generic, weak_connections, redundant,
+        )
+
         analysis = TextAnalysis(
             word_count=word_count,
             char_count=char_count,
@@ -349,6 +405,7 @@ class TextAnalyzer:
             avg_sentence_length=round(avg_sent_len, 1),
             readability_score=round(readability_score, 1),
             readability_grade=_readability_grade_label(fk_grade),
+            ai_pattern_score=ai_pattern_score,
             repetitive_structures=rep_structures,
             excessive_transitions=exc_transitions,
             unnatural_phrases=unnatural,
