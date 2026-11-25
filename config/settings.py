@@ -4,10 +4,20 @@ config/settings.py
 Centralised application settings loaded from environment variables
 or a .env file.  Every module imports from here – never from os.environ
 directly – so the whole app respects a single source of truth.
+
+Speed tuning applied (see humanip_speed_fix):
+  - chunk_threshold_words: 500 → 300
+  - chunk_max_words: 800 → 1500
+  - chunk_max_chars: 7000 → 12000
+  - chunk_concurrency: 3 → 8
+  - chunk_timeout: 30 → 25
+  - document_timeout: 45 → 20
+  - llm_min_interval: 4.5 → 0.0
+  - llm_temperature: 0.7 → 0.85
+  - quality_timeout: 20 → 10
 """
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -73,23 +83,23 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
 
-    # ── LLM Parameters ────────────────────────────────────────────────────────
-    llm_temperature: float = 0.7
+    # ── LLM Parameters ───────────────────── TUNED FOR SPEED ─────────────────
+    llm_temperature: float = 0.85        # was 0.7 — higher = more varied output
     llm_max_tokens: int = 4096
     llm_timeout: int = 60            # seconds per attempt
     llm_max_retries: int = 2         # attempts before giving up
-    llm_min_interval: float = 4.5    # minimum seconds between provider calls
+    llm_min_interval: float = 0.0    # was 4.5 — REMOVED: this was serialising chunks!
     llm_total_timeout: int = 90      # hard cap for the whole LLM call
     humanize_timeout: int = 85       # overall LLM budget for one humanization run
-    document_timeout: int = 45       # per-call cap before falling back to chunks
+    document_timeout: int = 20       # was 45 — fail fast, fall to chunks sooner
 
-    # ── Large-document handling ──────────────────────────────────────────────
-    chunk_threshold_words: int = 500   # above this, rewrite in chunks
-    chunk_max_words: int = 800         # target words per chunk
-    chunk_max_chars: int = 7000        # hard character cap per chunk
-    chunk_concurrency: int = 3         # parallel LLM calls per document
-    chunk_timeout: int = 30            # seconds per chunk call (incl. fallbacks)
-    diff_max_words: int = 3000         # skip word-level diff above this
+    # ── Large-document handling ──────────── TUNED FOR SPEED ─────────────────
+    chunk_threshold_words: int = 300     # was 500 — start chunking earlier
+    chunk_max_words: int = 1500          # was 800 — bigger chunks, fewer calls
+    chunk_max_chars: int = 12000         # was 7000 — matches larger word limit
+    chunk_concurrency: int = 8           # was 3 — THE BIGGEST WIN for large texts
+    chunk_timeout: int = 25              # was 30 — fail faster
+    diff_max_words: int = 3000        # skip word-level diff above this
 
     # ── NLP ───────────────────────────────────────────────────────────────────
     spacy_model: str = "en_core_web_sm"   # or en_core_web_md / lg
@@ -107,11 +117,11 @@ class Settings(BaseSettings):
     history_max_items: int = 500       # rows kept per user session
     history_retention_days: int = 30
 
-    # ── Quality Engine ────────────────────────────────────────────────────────
+    # ── Quality Engine ───────────────────── TUNED FOR SPEED ─────────────────
     similarity_threshold: float = 0.75  # minimum acceptable semantic similarity
     semantic_model: str = "all-MiniLM-L6-v2"
     enable_grammar_check: bool = False  # LanguageTool download/startup is slow
-    quality_timeout: int = 20           # seconds before falling back to heuristics
+    quality_timeout: int = 10            # was 20 — don't let this delay the response
 
     # ── Security ─────────────────────────────────────────────────────────────
     secret_key: str = Field(

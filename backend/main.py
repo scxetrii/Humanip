@@ -148,9 +148,11 @@ async def generic_error_handler(request: Request, exc: Exception) -> JSONRespons
 # ── Register routers ──────────────────────────────────────────────────────────
 
 from backend.api import health, humanize, history, providers, upload  # noqa: E402
+from backend.api.humanize_stream import router as stream_router  # noqa: E402
 
 app.include_router(health.router,     prefix="",          tags=["Health"])
 app.include_router(humanize.router,   prefix="/api/v1",   tags=["Humanize"])
+app.include_router(stream_router,     prefix="/api/v1",   tags=["Streaming"])
 app.include_router(history.router,    prefix="/api/v1",   tags=["History"])
 app.include_router(providers.router,  prefix="/api/v1",   tags=["Providers"])
 app.include_router(upload.router,     prefix="/api/v1",   tags=["Upload"])
