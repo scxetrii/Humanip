@@ -196,14 +196,34 @@ function renderHumanMeter(score) {
   const band = pct >= 75 ? 'high' : pct >= 50 ? 'mid' : 'low';
   const verdict = band === 'high' ? 'Human-like' : band === 'mid' ? 'Mixed' : 'AI-like';
 
+  const h = pct / 100;
+  const mixedFrac = 0.5 * Math.max(0, 1 - 2 * Math.abs(h - 0.5));
+  let humanPct = Math.round((h - mixedFrac / 2) * 100);
+  let mixedPct = Math.round(mixedFrac * 100);
+  let aiPct = 100 - humanPct - mixedPct;
+  if (aiPct < 0) {
+    mixedPct += aiPct;
+    aiPct = 0;
+  }
+
   meter.hidden = false;
   meter.dataset.band = band;
   meter.setAttribute('aria-valuenow', pct);
-  meter.setAttribute('aria-valuetext', `${pct}% ${verdict}`);
+  meter.setAttribute(
+    'aria-valuetext',
+    `${pct}% human-likeness, ${verdict}. Estimated split: human-written ${humanPct}%, mixed ${mixedPct}%, AI-written ${aiPct}%.`
+  );
   document.getElementById('humanMeterValue').textContent = pct;
 
   const verdictEl = document.getElementById('humanMeterVerdict');
   if (verdictEl) verdictEl.textContent = verdict;
+
+  const humanEl = document.getElementById('humanMeterHuman');
+  if (humanEl) humanEl.textContent = humanPct;
+  const mixedEl = document.getElementById('humanMeterMixed');
+  if (mixedEl) mixedEl.textContent = mixedPct;
+  const aiEl = document.getElementById('humanMeterAi');
+  if (aiEl) aiEl.textContent = aiPct;
 
   const needle = document.getElementById('humanMeterNeedle');
   if (needle) {

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="static/css/main.css?v=20261203" />
+  <link rel="stylesheet" href="static/css/main.css?v=20261204" />
 </head>
 <body>
 
@@ -475,6 +475,11 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
                 </div>
               </div>
               <span class="digital-meter-verdict" id="humanMeterVerdict">—</span>
+              <div class="digital-meter-breakdown">
+                <span class="dm-stat dm-human"><i></i>Human-written <b id="humanMeterHuman">—</b>%</span>
+                <span class="dm-stat dm-mixed"><i></i>Mixed <b id="humanMeterMixed">—</b>%</span>
+                <span class="dm-stat dm-ai"><i></i>AI-written <b id="humanMeterAi">—</b>%</span>
+              </div>
               <div class="analog-meter-dial">
                 <svg class="analog-meter-svg" viewBox="0 0 220 128" aria-hidden="true">
                   <path class="analog-arc-base" d="M 22 110 A 88 88 0 0 1 198 110"/>
@@ -502,7 +507,7 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
                   <circle class="analog-hub-core" cx="110" cy="110" r="4"/>
                 </svg>
               </div>
-              <p class="digital-meter-note">Higher % = more human-sounding. Internal style estimate — not a third-party AI-detector score.</p>
+              <p class="digital-meter-note">Estimated split from the internal style score. Higher = more human-sounding; not a third-party AI-detector result.</p>
             </div>
 
             <div class="output-tabs-bar">
@@ -864,7 +869,7 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
 
 <script src="static/js/api.js?v=20261128"></script>
 <script src="static/js/api_stream_patch.js?v=20261129"></script>
-<script src="static/js/ui.js?v=20261203"></script>
+<script src="static/js/ui.js?v=20261204"></script>
 <script src="static/js/app.js?v=20261129"></script>
 </body>
 </html>
