@@ -194,10 +194,16 @@ function renderHumanMeter(score) {
 
   const pct = Math.max(0, Math.min(100, Math.round(Number(score))));
   const band = pct >= 75 ? 'high' : pct >= 50 ? 'mid' : 'low';
+  const verdict = band === 'high' ? 'Human-like' : band === 'mid' ? 'Mixed' : 'AI-like';
+
   meter.hidden = false;
   meter.dataset.band = band;
   meter.setAttribute('aria-valuenow', pct);
+  meter.setAttribute('aria-valuetext', `${pct}% ${verdict}`);
   document.getElementById('humanMeterValue').textContent = pct;
+
+  const verdictEl = document.getElementById('humanMeterVerdict');
+  if (verdictEl) verdictEl.textContent = verdict;
 
   const needle = document.getElementById('humanMeterNeedle');
   if (needle) {

@@ -1314,6 +1314,7 @@ body.menu-open .menu-icon-close {
   grid-template-columns: 148px minmax(0, 1fr);
   grid-template-areas:
     "dial head"
+    "dial verdict"
     "dial note";
   align-items: center;
   align-content: center;
@@ -1384,6 +1385,38 @@ body.menu-open .menu-icon-close {
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--text-3);
+}
+
+.digital-meter-verdict {
+  grid-area: verdict;
+  justify-self: end;
+  padding: 2px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #f1f5f9;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.digital-meter[data-band='high'] .digital-meter-verdict {
+  border-color: #bbf7d0;
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.digital-meter[data-band='mid'] .digital-meter-verdict {
+  border-color: #fde68a;
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.digital-meter[data-band='low'] .digital-meter-verdict {
+  border-color: #fecaca;
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 .analog-meter-svg {

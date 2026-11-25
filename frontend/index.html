@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="static/css/main.css?v=20261202" />
+  <link rel="stylesheet" href="static/css/main.css?v=20261203" />
 </head>
 <body>
 
@@ -466,14 +466,15 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
               </div>
             </div>
 
-            <div class="digital-meter" id="humanMeter" hidden role="meter" aria-label="Naturalness estimate" aria-valuemin="0" aria-valuemax="100">
+            <div class="digital-meter" id="humanMeter" hidden role="meter" aria-label="Human-likeness estimate (higher is more human-sounding)" aria-valuemin="0" aria-valuemax="100">
               <div class="digital-meter-head">
-                <span class="digital-meter-label">Naturalness <span class="digital-meter-est">est.</span></span>
+                <span class="digital-meter-label">Human-likeness <span class="digital-meter-est">est.</span></span>
                 <div class="digital-meter-readout">
                   <span class="digital-meter-value" id="humanMeterValue">—</span>
                   <span class="digital-meter-unit">%</span>
                 </div>
               </div>
+              <span class="digital-meter-verdict" id="humanMeterVerdict">—</span>
               <div class="analog-meter-dial">
                 <svg class="analog-meter-svg" viewBox="0 0 220 128" aria-hidden="true">
                   <path class="analog-arc-base" d="M 22 110 A 88 88 0 0 1 198 110"/>
@@ -501,7 +502,7 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
                   <circle class="analog-hub-core" cx="110" cy="110" r="4"/>
                 </svg>
               </div>
-              <p class="digital-meter-note">Internal style estimate — not a third-party AI-detector score.</p>
+              <p class="digital-meter-note">Higher % = more human-sounding. Internal style estimate — not a third-party AI-detector score.</p>
             </div>
 
             <div class="output-tabs-bar">
@@ -863,7 +864,7 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
 
 <script src="static/js/api.js?v=20261128"></script>
 <script src="static/js/api_stream_patch.js?v=20261129"></script>
-<script src="static/js/ui.js?v=20261201"></script>
+<script src="static/js/ui.js?v=20261203"></script>
 <script src="static/js/app.js?v=20261129"></script>
 </body>
 </html>
