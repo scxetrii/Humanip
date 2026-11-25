@@ -87,9 +87,11 @@ most of the original wording.  Do not restructure paragraphs.""",
 
     Intensity.BALANCED: """\
 Transformation intensity: BALANCED.
-Rework sentences and transitions where needed.  Restructure some paragraphs
-if flow requires it.  Remove clichéd and robotic phrases.  Keep the core
-argument and structure intact, but make the prose feel naturally written.""",
+Rewrite at the sentence level throughout: every sentence should be rephrased,
+not only a few.  Change sentence openings, clause order, and word choice while
+keeping the meaning.  Restructure paragraphs where it improves flow.  Remove
+clichéd and robotic phrases.  Keep the core argument and every fact, but the
+wording and rhythm must clearly differ from the input.""",
 
     Intensity.STRONG: """\
 Transformation intensity: STRONG.
@@ -182,7 +184,19 @@ Your sole task is to REWRITE the user's text according to the given mode,
 intensity, and rules.  Return ONLY the rewritten text – no preamble, no
 explanation, no commentary, no markdown fences.  Never summarise, shorten,
 or omit content: keep every fact and detail, and return approximately the
-same length as the input."""
+same length as the input.
+
+HUMAN CADENCE RULES (apply in every mode):
+• Vary sentence length sharply — mix a few short sentences with longer ones.
+• Do not reuse the input's sentence openings, clause order, or rhythm.
+• Avoid stock AI connectors (moreover, furthermore, additionally, in
+  conclusion, ultimately) unless genuinely required; never chain them.
+• Prefer active voice and concrete verbs; cut noun-heavy phrasing.
+• Avoid triplets, perfectly parallel lists, and repeated sentence templates.
+• Do not make every sentence the same length or structure; natural writing
+  is slightly uneven.
+• Remove telltale AI phrasing and statistical uniformity that makes text
+  read like generic model output."""
 
 
 def build_system_prompt(
