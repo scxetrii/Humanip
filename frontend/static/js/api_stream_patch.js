@@ -5,8 +5,9 @@
  *
  * It overrides the original humanizeText() from api.js so the existing
  * app.js controller works unchanged, while chunks appear in the output
- * pane as soon as each one is rewritten. If streaming fails for any
- * reason, it automatically falls back to the standard /humanize endpoint.
+ * pane as soon as each one is rewritten. Progress is shown in the
+ * in-page percentage bar (#humanizeProgress), not in a popup.
+ * If streaming fails, it falls back to the standard /humanize endpoint.
  */
 
 (function () {
@@ -14,45 +15,18 @@
 
   const STREAM_PATH = '/api/v1/humanize/stream';
 
-  // ── Progress bar ──────────────────────────────────────────────────────────
+  // ── Progress helpers (delegate to ui.js when available) ───────────────────
 
-  function getOrCreateProgressBar() {
-    let bar = document.getElementById('humanip-stream-progress');
-    if (!bar) {
-      bar = document.createElement('div');
-      bar.id = 'humanip-stream-progress';
-      bar.style.cssText = `
-        position: fixed;
-        top: 0; left: 0; right: 0;
-        height: 3px;
-        background: linear-gradient(90deg, #6366f1, #8b5cf6);
-        transform-origin: left;
-        transform: scaleX(0);
-        transition: transform 0.3s ease, opacity 0.4s ease;
-        z-index: 9999;
-        border-radius: 0 2px 2px 0;
-      `;
-      document.body.appendChild(bar);
+  function reportProgress(fraction, label) {
+    if (typeof setHumanizeProgress === 'function') {
+      setHumanizeProgress(fraction, label);
     }
-    return bar;
   }
 
-  function setProgress(fraction) {
-    const bar = getOrCreateProgressBar();
-    bar.style.opacity = '1';
-    bar.style.transform = `scaleX(${Math.min(1, Math.max(0, fraction))})`;
-  }
-
-  function hideProgress() {
-    const bar = document.getElementById('humanip-stream-progress');
-    if (!bar) return;
-    bar.style.transform = 'scaleX(1)';
-    setTimeout(() => {
-      bar.style.opacity = '0';
-      setTimeout(() => {
-        bar.style.transform = 'scaleX(0)';
-      }, 400);
-    }, 200);
+  function reportDone() {
+    if (typeof finishHumanizeProgress === 'function') {
+      finishHumanizeProgress('Complete');
+    }
   }
 
   // ── Output rendering helpers ──────────────────────────────────────────────
@@ -82,7 +56,7 @@
   // ── SSE fetch ─────────────────────────────────────────────────────────────
 
   async function humanizeStream(payload, handlers) {
-    const { onStart, onChunk, onDone, onError } = handlers;
+    const { onChunk, onDone, onError } = handlers;
     let totalChunks = 0;
     let completed = 0;
     let settled = false;
@@ -134,15 +108,20 @@
 
           if (event.type === 'start') {
             totalChunks = event.total_chunks || 1;
-            setProgress(0.05);
-            if (onStart) onStart(event);
+            reportProgress(0.05, 'Preparing sections…');
           } else if (event.type === 'chunk') {
             completed += 1;
-            setProgress(totalChunks ? 0.05 + 0.85 * (completed / totalChunks) : 0.5);
+            const fraction = totalChunks
+              ? 0.05 + 0.85 * (completed / totalChunks)
+              : 0.5;
+            reportProgress(
+              fraction,
+              `Rewriting section ${completed} of ${totalChunks || '…'}…`
+            );
             if (onChunk) onChunk(event.text, event.index, totalChunks);
           } else if (event.type === 'done') {
             settled = true;
-            setProgress(1);
+            reportDone();
             if (onDone) onDone(event);
           } else if (event.type === 'error') {
             settled = true;
@@ -156,7 +135,6 @@
       }
     } catch (err) {
       if (!settled) {
-        hideProgress();
         if (onError) onError(err.message || 'Network error');
       }
     }
@@ -176,14 +154,9 @@
     const streamingHumanize = function (payload) {
       return new Promise((resolve, reject) => {
         const outputEl = prepareOutput();
-        let firstChunkShown = false;
 
         humanizeStream(payload, {
           onChunk(text) {
-            if (!firstChunkShown) {
-              firstChunkShown = true;
-              if (typeof hideLoading === 'function') hideLoading();
-            }
             appendChunk(outputEl, text);
           },
 
@@ -209,9 +182,7 @@
               '[humanip] Streaming failed (' + message + '), falling back to standard endpoint'
             );
             resetOutput(outputEl);
-            if (typeof showLoading === 'function') {
-              showLoading('Reconnecting…', 'Streaming unavailable — retrying normally.');
-            }
+            reportProgress(0.9, 'Retrying without streaming…');
             originalHumanize(payload).then(resolve, reject);
           },
         });

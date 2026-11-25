@@ -38,6 +38,131 @@ function hideLoading() {
 }
 
 
+// ── In-page humanize progress bar ────────────────────────────────────────────
+
+const _humanizeProgress = {
+  current: 0,
+  target: 0,
+  active: false,
+  done: false,
+  timer: null,
+  hideTimer: null,
+};
+
+function _hpRender() {
+  const valueEl = document.getElementById('humanizeProgressValue');
+  const fillEl = document.getElementById('humanizeProgressFill');
+  if (!valueEl || !fillEl) return;
+  const pct = Math.max(0, Math.min(100, Math.round(_humanizeProgress.current)));
+  valueEl.textContent = pct;
+  fillEl.style.width = `${pct}%`;
+}
+
+function _hpTick() {
+  const s = _humanizeProgress;
+
+  if (!s.active) {
+    clearInterval(s.timer);
+    s.timer = null;
+    return;
+  }
+
+  if (s.current < s.target) {
+    const step = s.done ? Math.max(1, Math.ceil((100 - s.current) / 5)) : 1;
+    s.current = Math.min(s.target, s.current + step);
+    _hpRender();
+
+    if (s.done && s.current >= 100) {
+      clearInterval(s.timer);
+      s.timer = null;
+      clearTimeout(s.hideTimer);
+      s.hideTimer = setTimeout(hideHumanizeProgress, 900);
+    }
+  } else if (!s.done && s.target < 90) {
+    s.target += 1;
+  }
+}
+
+function showHumanizeProgress(label) {
+  const wrap = document.getElementById('humanizeProgress');
+  if (!wrap) return;
+
+  const s = _humanizeProgress;
+  clearTimeout(s.hideTimer);
+  s.active = true;
+  s.done = false;
+  s.current = 0;
+  s.target = 2;
+
+  wrap.hidden = false;
+  wrap.dataset.state = 'running';
+  const labelEl = document.getElementById('humanizeProgressLabel');
+  if (labelEl) labelEl.textContent = label || 'Humanizing…';
+  _hpRender();
+
+  if (!s.timer) s.timer = setInterval(_hpTick, 55);
+}
+
+function setHumanizeProgress(fraction, label) {
+  const s = _humanizeProgress;
+  if (!s.active) return;
+
+  const pct = Math.max(0, Math.min(99, Math.round(fraction * 100)));
+  if (pct > s.target) s.target = pct;
+
+  if (label) {
+    const labelEl = document.getElementById('humanizeProgressLabel');
+    if (labelEl) labelEl.textContent = label;
+  }
+}
+
+function finishHumanizeProgress(label) {
+  const s = _humanizeProgress;
+  if (!s.active) return;
+
+  s.done = true;
+  s.target = 100;
+
+  if (label) {
+    const labelEl = document.getElementById('humanizeProgressLabel');
+    if (labelEl) labelEl.textContent = label;
+  }
+}
+
+function failHumanizeProgress(label) {
+  const s = _humanizeProgress;
+  if (!s.active) return;
+
+  const wrap = document.getElementById('humanizeProgress');
+  if (wrap) wrap.dataset.state = 'error';
+  const labelEl = document.getElementById('humanizeProgressLabel');
+  if (labelEl) labelEl.textContent = label || 'Failed';
+
+  s.done = true;
+  s.target = 100;
+}
+
+function hideHumanizeProgress() {
+  const wrap = document.getElementById('humanizeProgress');
+  const s = _humanizeProgress;
+
+  clearInterval(s.timer);
+  clearTimeout(s.hideTimer);
+  s.timer = null;
+  s.hideTimer = null;
+  s.active = false;
+  s.done = false;
+  s.current = 0;
+  s.target = 0;
+
+  if (wrap) {
+    wrap.hidden = true;
+    wrap.dataset.state = '';
+  }
+  _hpRender();
+}
+
+
 // ── Stats bar ─────────────────────────────────────────────────────────────────
 
 function updateInputStats(text) {

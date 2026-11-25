@@ -316,7 +316,7 @@ async function runHumanize() {
   // Snapshot for undo
   _pushUndo(text, state.currentOutput);
 
-  showLoading('Humanizing text…', getModeDescription());
+  showHumanizeProgress(getModeDescription());
 
   const btn = document.getElementById('humanizeBtn');
   btn.disabled = true;
@@ -360,13 +360,15 @@ async function runHumanize() {
     // Auto-switch to output tab
     activateTab('output');
 
+    finishHumanizeProgress('Complete');
+
     const score = Math.round(response.quality.overall_score);
     showToast(`Done! Quality score: ${score}/100`, score >= 70 ? 'success' : 'warning');
 
   } catch (err) {
+    failHumanizeProgress('Failed');
     showToast(`Humanization failed: ${err.message}`, 'error');
   } finally {
-    hideLoading();
     btn.disabled = false;
     btn.querySelector('.btn-label').textContent = 'Humanize Text';
     btn.querySelector('.btn-spinner').classList.add('hidden');
