@@ -46,7 +46,6 @@ const _humanizeProgress = {
   active: false,
   done: false,
   timer: null,
-  hideTimer: null,
 };
 
 function _hpRender() {
@@ -75,8 +74,8 @@ function _hpTick() {
     if (s.done && s.current >= 100) {
       clearInterval(s.timer);
       s.timer = null;
-      clearTimeout(s.hideTimer);
-      s.hideTimer = setTimeout(hideHumanizeProgress, 900);
+      const wrap = document.getElementById('humanizeProgress');
+      if (wrap && wrap.dataset.state !== 'error') wrap.dataset.state = 'complete';
     }
   } else if (!s.done && s.target < 90) {
     s.target += 1;
@@ -88,7 +87,6 @@ function showHumanizeProgress(label) {
   if (!wrap) return;
 
   const s = _humanizeProgress;
-  clearTimeout(s.hideTimer);
   s.active = true;
   s.done = false;
   s.current = 0;
@@ -147,9 +145,7 @@ function hideHumanizeProgress() {
   const s = _humanizeProgress;
 
   clearInterval(s.timer);
-  clearTimeout(s.hideTimer);
   s.timer = null;
-  s.hideTimer = null;
   s.active = false;
   s.done = false;
   s.current = 0;
@@ -235,6 +231,7 @@ function resetOutput() {
   renderDiff([]);
   renderQuality(null);
   renderIssues([]);
+  hideHumanizeProgress();
 }
 
 
