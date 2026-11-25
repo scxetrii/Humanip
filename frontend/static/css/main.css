@@ -1377,23 +1377,99 @@ body.menu-open .menu-icon-close {
   color: #8fa3c0;
 }
 
-.digital-meter-track {
-  height: 7px;
-  margin-top: 10px;
-  border-radius: 999px;
-  background:
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0 1px, transparent 1px 10%),
-    rgba(255, 255, 255, 0.08);
-  overflow: hidden;
+.analog-meter-dial {
+  margin-top: 6px;
 }
 
-.digital-meter-fill {
-  height: 100%;
-  width: 0;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #16a34a, #4ade80);
-  box-shadow: 0 0 14px rgba(74, 222, 128, 0.6);
-  transition: width 0.6s ease, background 0.3s;
+.analog-meter-svg {
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  height: auto;
+  margin: 0 auto;
+}
+
+.analog-arc-base,
+.analog-arc-seg {
+  fill: none;
+  stroke-width: 14;
+}
+
+.analog-arc-base {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+
+.analog-arc-seg {
+  opacity: 0.95;
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+.analog-arc-seg.seg-low {
+  stroke: #ef4444;
+  color: #ef4444;
+}
+
+.analog-arc-seg.seg-midlow {
+  stroke: #f97316;
+  color: #f97316;
+}
+
+.analog-arc-seg.seg-midhigh {
+  stroke: #facc15;
+  color: #facc15;
+}
+
+.analog-arc-seg.seg-high {
+  stroke: #22c55e;
+  color: #22c55e;
+}
+
+.analog-ticks line {
+  stroke: rgba(255, 255, 255, 0.25);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.analog-ticks line.major {
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 2.2;
+}
+
+.analog-needle {
+  transform: rotate(var(--angle, -90deg));
+  transform-origin: 110px 110px;
+  transform-box: view-box;
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.analog-needle line {
+  stroke: #f8fafc;
+  stroke-width: 3;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 5px rgba(248, 250, 252, 0.55));
+}
+
+.analog-hub {
+  fill: #0b1220;
+  stroke: rgba(255, 255, 255, 0.3);
+  stroke-width: 1.5;
+}
+
+.analog-hub-core {
+  fill: #f97316;
+  filter: drop-shadow(0 0 6px rgba(249, 115, 22, 0.8));
+}
+
+.digital-meter[data-band='high'] .analog-hub-core {
+  fill: #4ade80;
+}
+
+.digital-meter[data-band='mid'] .analog-hub-core {
+  fill: #fbbf24;
+}
+
+.digital-meter[data-band='low'] .analog-hub-core {
+  fill: #f87171;
 }
 
 .digital-meter-note {

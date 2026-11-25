@@ -193,19 +193,17 @@ function renderHumanMeter(score) {
   }
 
   const pct = Math.max(0, Math.min(100, Math.round(Number(score))));
-  const fill = document.getElementById('humanMeterFill');
   const band = pct >= 75 ? 'high' : pct >= 50 ? 'mid' : 'low';
   meter.hidden = false;
   meter.dataset.band = band;
   meter.setAttribute('aria-valuenow', pct);
-  fill.style.width = `${pct}%`;
-  fill.style.background =
-    band === 'high'
-      ? 'linear-gradient(90deg, #16a34a, #4ade80)'
-      : band === 'mid'
-        ? 'linear-gradient(90deg, #d97706, #fbbf24)'
-        : 'linear-gradient(90deg, #dc2626, #f87171)';
   document.getElementById('humanMeterValue').textContent = pct;
+
+  const needle = document.getElementById('humanMeterNeedle');
+  if (needle) {
+    const angle = -90 + pct * 1.8;
+    needle.style.setProperty('--angle', `${angle.toFixed(1)}deg`);
+  }
 }
 
 

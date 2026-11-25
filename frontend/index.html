@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="static/css/main.css?v=20261130" />
+  <link rel="stylesheet" href="static/css/main.css?v=20261201" />
 </head>
 <body>
 
@@ -474,8 +474,32 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
                   <span class="digital-meter-unit">%</span>
                 </div>
               </div>
-              <div class="digital-meter-track">
-                <div class="digital-meter-fill" id="humanMeterFill"></div>
+              <div class="analog-meter-dial">
+                <svg class="analog-meter-svg" viewBox="0 0 220 128" aria-hidden="true">
+                  <path class="analog-arc-base" d="M 22 110 A 88 88 0 0 1 198 110"/>
+                  <path class="analog-arc-seg seg-low" d="M 22 110 A 88 88 0 0 1 47.77 47.77"/>
+                  <path class="analog-arc-seg seg-midlow" d="M 47.77 47.77 A 88 88 0 0 1 110 22"/>
+                  <path class="analog-arc-seg seg-midhigh" d="M 110 22 A 88 88 0 0 1 172.23 47.77"/>
+                  <path class="analog-arc-seg seg-high" d="M 172.23 47.77 A 88 88 0 0 1 198 110"/>
+                  <g class="analog-ticks">
+                    <line class="major" x1="110" y1="34" x2="110" y2="48" transform="rotate(-90 110 110)"/>
+                    <line x1="110" y1="36" x2="110" y2="46" transform="rotate(-72 110 110)"/>
+                    <line x1="110" y1="36" x2="110" y2="46" transform="rotate(-54 110 110)"/>
+                    <line x1="110" y1="36" x2="110" y2="46" transform="rotate(-36 110 110)"/>
+                    <line x1="110" y1="36" x2="110" y2="46" transform="rotate(-18 110 110)"/>
+                    <line class="major" x1="110" y1="34" x2="110" y2="48" transform="rotate(0 110 110)"/>
+                    <line x1="110" y1="36" x2="110" y2="46" transform="rotate(18 110 110)"/>
+                    <line x1="110" y1="36" x2="110" y2="46" transform="rotate(36 110 110)"/>
+                    <line x1="110" y1="36" x2="110" y2="46" transform="rotate(54 110 110)"/>
+                    <line x1="110" y1="36" x2="110" y2="46" transform="rotate(72 110 110)"/>
+                    <line class="major" x1="110" y1="34" x2="110" y2="48" transform="rotate(90 110 110)"/>
+                  </g>
+                  <g class="analog-needle" id="humanMeterNeedle">
+                    <line x1="110" y1="118" x2="110" y2="32"/>
+                  </g>
+                  <circle class="analog-hub" cx="110" cy="110" r="9"/>
+                  <circle class="analog-hub-core" cx="110" cy="110" r="4"/>
+                </svg>
               </div>
               <p class="digital-meter-note">Internal style estimate — not a third-party AI-detector score.</p>
             </div>
@@ -839,7 +863,7 @@ The humanizer will fix robotic patterns, clichés, repetitive structures and unn
 
 <script src="static/js/api.js?v=20261128"></script>
 <script src="static/js/api_stream_patch.js?v=20261129"></script>
-<script src="static/js/ui.js?v=20261130"></script>
+<script src="static/js/ui.js?v=20261201"></script>
 <script src="static/js/app.js?v=20261129"></script>
 </body>
 </html>
